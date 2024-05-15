@@ -110,3 +110,9 @@ logs/*
 # custom
 _test*.py
 _test*.json
+
+# pyrogram
+*.session
+*.sesion-journal
+
+.signer
