@@ -56,12 +56,7 @@ def get_proxy():
 def get_client(name: str = "my_account", proxy=None):
     proxy = proxy or get_proxy()
     api_id, api_hash = get_api_config()
-    return Client(
-        name,
-        api_id,
-        api_hash,
-        proxy=proxy,
-    )
+    return Client(name, api_id, api_hash, proxy=proxy, workdir=".")
 
 
 app = get_client()
