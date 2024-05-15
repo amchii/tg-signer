@@ -136,7 +136,7 @@ class UserSigner:
     def get_me(self):
         file = self.base_dir.joinpath("me.json")
         if file.is_file():
-            with open(file, "r") as f:
+            with open(file, "r", encoding="utf-8") as f:
                 data = json.load(f)
             data.pop("_")
             user = User(
@@ -149,7 +149,7 @@ class UserSigner:
 
     def set_me(self, user: User):
         self.user = user
-        with open(self.base_dir.joinpath("me.json"), "w") as fp:
+        with open(self.base_dir.joinpath("me.json"), "w", encoding="utf-8") as fp:
             fp.write(str(user))
 
     def ask_for_config(self) -> "SignConfig":
@@ -164,7 +164,7 @@ class UserSigner:
 
     def reconfig(self):
         config = self.ask_for_config()
-        with open(self.config_file, "w") as fp:
+        with open(self.config_file, "w", encoding="utf-8") as fp:
             json.dump(config.to_jsonable(), fp)
         return config
 
@@ -172,17 +172,17 @@ class UserSigner:
         if not self.config_file.exists():
             config = self.reconfig()
         else:
-            with open(self.config_file, "r") as fp:
+            with open(self.config_file, "r", encoding="utf-8") as fp:
                 config = SignConfig.from_json(json.load(fp))
         return config
 
     def load_sign_record(self):
         sign_record = {}
         if not self.sign_record_file.is_file():
-            with open(self.sign_record_file, "w") as fp:
+            with open(self.sign_record_file, "w", encoding="utf-8") as fp:
                 json.dump(sign_record, fp)
         else:
-            with open(self.sign_record_file, "r") as fp:
+            with open(self.sign_record_file, "r", encoding="utf-8") as fp:
                 sign_record = json.load(fp)
         return sign_record
 
@@ -208,7 +208,9 @@ class UserSigner:
                 )
                 print(latest_chats[-1])
 
-            with open(self.base_dir.joinpath("latest_chats.json"), "w") as fp:
+            with open(
+                self.base_dir.joinpath("latest_chats.json"), "w", encoding="utf-8"
+            ) as fp:
                 json.dump(
                     latest_chats,
                     fp,
@@ -243,7 +245,7 @@ class UserSigner:
                     if str(now.date()) not in sign_record:
                         await self.sign(config.chat_id, config.sign_text)
                         sign_record[str(now.date())] = now.isoformat()
-                        with open(self.sign_record_file, "w") as fp:
+                        with open(self.sign_record_file, "w", encoding="utf-8") as fp:
                             json.dump(sign_record, fp)
 
                     next_run = (now + timedelta(days=1)).replace(
