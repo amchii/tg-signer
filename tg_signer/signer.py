@@ -153,9 +153,9 @@ class UserSigner:
             fp.write(str(user))
 
     def ask_for_config(self) -> "SignConfig":
-        chat_id = int(input("Chat ID: "))
-        sign_text = input("签到文本: ")
-        sign_at_str = input("每日签到时间（如 06:00:00）: ")
+        chat_id = int(input("Chat ID（登录时最近对话输出中的ID）: "))
+        sign_text = input("签到文本（如 /sign）: ") or "/sign"
+        sign_at_str = input("每日签到时间（如 06:00:00）: ") or "06:00:00"
         sign_at_str = sign_at_str.replace("：", ":").strip()
         sign_at = time.fromisoformat(sign_at_str)
         random_seconds_str = input("签到时间误差随机秒数（默认为0）: ") or "0"
@@ -188,7 +188,10 @@ class UserSigner:
 
     async def login(self, num_of_dialogs=20):
         num_of_dialogs = int(
-            input(f"获取最近N个对话（默认{num_of_dialogs}）：") or num_of_dialogs
+            input(
+                f"获取最近N个对话（默认{num_of_dialogs}，请确保想要签到的对话在最近N个对话内）："
+            )
+            or num_of_dialogs
         )
         async with app:
             me = await app.get_me()
@@ -276,7 +279,7 @@ async def main():
         return await signer.login()
     elif command == "list":
         return signer.list()
-    name = input("签到任务名（e.g. mojie）：")
+    name = input("签到任务名（e.g. mojie）：") or "my_sign"
     signer.sign_name = name
     if command == "run":
         return await signer.run()
