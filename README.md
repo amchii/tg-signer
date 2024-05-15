@@ -1,7 +1,9 @@
 # Telegram Signer - Telegram每日自动签到
 
 ## Install
-`pip install -U tg-signer`
+```
+pip install -U tg-signer
+```
 
 ## Usage
 ```
@@ -13,7 +15,9 @@ e.g. tg-signer run
 use `TG_PROXY`
 
 e.g.:
-`export TG_PROXY=socks5://127.0.0.1:7890`
+```
+export TG_PROXY=socks5://127.0.0.1:7890
+```
 
 #### Run
 `tg-signer run`

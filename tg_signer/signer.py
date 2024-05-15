@@ -31,10 +31,14 @@ file_handler = RotatingFileHandler(
 )
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
-desktop_api_id = 611335
-desktop_api_hash = "d524b414d21f4d37f08684c1df41ac9c"
-root_dir = pathlib.Path(__file__).parent.absolute()
+root_dir = pathlib.Path(".").absolute()
 local_dir = root_dir / ".signer"
+
+
+def get_api_config():
+    api_id = int(os.environ.get("TG_API_ID", 611335))
+    api_hash = os.environ.get("TG_API_HASH", "d524b414d21f4d37f08684c1df41ac9c")
+    return api_id, api_hash
 
 
 def get_proxy():
@@ -51,10 +55,11 @@ def get_proxy():
 
 def get_client(name: str = "my_account", proxy=None):
     proxy = proxy or get_proxy()
+    api_id, api_hash = get_api_config()
     return Client(
         name,
-        desktop_api_id,
-        desktop_api_hash,
+        api_id,
+        api_hash,
         proxy=proxy,
     )
 
@@ -77,7 +82,7 @@ class SignConfig:
     chat_id: int
     sign_text: str
     sign_at: time
-    random_seconds: float | int
+    random_seconds: int
 
     def to_jsonable(self):
         return {
@@ -137,8 +142,8 @@ class UserSigner:
             user = User(
                 id=data["id"],
                 is_self=True,
-                first_name=data["first_name"],
-                last_name=data["last_name"],
+                first_name=data.get("first_name"),
+                last_name=data.get("last_name"),
             )
             return user
 
@@ -154,7 +159,7 @@ class UserSigner:
         sign_at_str = sign_at_str.replace("：", ":").strip()
         sign_at = time.fromisoformat(sign_at_str)
         random_seconds_str = input("签到时间误差随机秒数（默认为0）: ") or "0"
-        random_seconds = float(random_seconds_str)
+        random_seconds = int(float(random_seconds_str))
         return SignConfig(chat_id, sign_text, sign_at, random_seconds)
 
     def reconfig(self):
@@ -246,7 +251,7 @@ class UserSigner:
                         minute=sign_at.minute,
                         second=sign_at.second,
                         microsecond=sign_at.microsecond,
-                    ) + timedelta(seconds=random.randint(0, config.random_seconds))
+                    ) + timedelta(seconds=random.randint(0, int(config.random_seconds)))
                     logger.info(f"下次运行时间: {next_run}")
                     await asyncio.sleep((next_run - now).total_seconds())
             except (OSError, errors.Unauthorized) as e:
