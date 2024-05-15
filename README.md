@@ -9,6 +9,11 @@ Usage: tg-signer <command>
 Available commands: list, login, run, reconfig
 e.g. tg-signer run
 ```
+#### Configure proxy(if necessary)
+use `TG_PROXY`
+
+e.g.:
+`export TG_PROXY=socks5://127.0.0.1:7890`
 
 #### Run
 `tg-signer run`
@@ -19,7 +24,7 @@ run `tree .signer` you will see:
 ├── latest_chats.json
 ├── me.json
 └── signs
-    └── aisgk  # 签到任务名
+    └── openai  # 签到任务名
         ├── config.json  # 签到配置
         └── sign_record.json  # 签到记录
 
