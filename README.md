@@ -4,6 +4,10 @@
 ```
 pip install -U tg-signer
 ```
+or for speedup:
+```
+pip install "tg-signer[tgcrypto]"
+```
 
 ## Usage
 ```
@@ -12,7 +16,7 @@ Available commands: list, login, run, reconfig
 e.g. tg-signer run
 ```
 #### Configure proxy(if necessary)
-use `TG_PROXY`
+use env `TG_PROXY`
 
 e.g.:
 ```
@@ -25,8 +29,8 @@ export TG_PROXY=socks5://127.0.0.1:7890
 run `tree .signer` you will see:
 ```
 .signer
-├── latest_chats.json
-├── me.json
+├── latest_chats.json  # 获取的最近对话
+├── me.json  # 个人信息
 └── signs
     └── openai  # 签到任务名
         ├── config.json  # 签到配置
