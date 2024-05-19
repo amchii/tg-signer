@@ -10,7 +10,7 @@ from datetime import datetime, time, timedelta, timezone
 from logging.handlers import RotatingFileHandler
 from urllib import parse
 
-from pyrogram import Client, errors
+from pyrogram import Client as BaseClient, errors
 from pyrogram.types import Object, User
 
 format_str = (
@@ -33,6 +33,14 @@ file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 root_dir = pathlib.Path(".").absolute()
 local_dir = root_dir / ".signer"
+
+
+class Client(BaseClient):
+    async def __aenter__(self):
+        try:
+            return await self.start()
+        except ConnectionError:
+            pass
 
 
 def get_api_config():
@@ -246,17 +254,18 @@ class UserSigner:
                         with open(self.sign_record_file, "w", encoding="utf-8") as fp:
                             json.dump(sign_record, fp)
 
-                    next_run = (now + timedelta(days=1)).replace(
-                        hour=sign_at.hour,
-                        minute=sign_at.minute,
-                        second=sign_at.second,
-                        microsecond=sign_at.microsecond,
-                    ) + timedelta(seconds=random.randint(0, int(config.random_seconds)))
-                    logger.info(f"下次运行时间: {next_run}")
-                    await asyncio.sleep((next_run - now).total_seconds())
             except (OSError, errors.Unauthorized) as e:
                 logger.exception(e)
                 await asyncio.sleep(30)
+
+            next_run = (now + timedelta(days=1)).replace(
+                hour=sign_at.hour,
+                minute=sign_at.minute,
+                second=sign_at.second,
+                microsecond=sign_at.microsecond,
+            ) + timedelta(seconds=random.randint(0, int(config.random_seconds)))
+            logger.info(f"下次运行时间: {next_run}")
+            await asyncio.sleep((next_run - now).total_seconds())
 
 
 async def main():
