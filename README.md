@@ -26,7 +26,8 @@ export TG_PROXY=socks5://127.0.0.1:7890
 #### Run
 `tg-signer run`
 
-run `tree .signer` you will see:
+Configure according to the prompts. The data and configuration are stored in the `.signer` directory.
+Then run `tree .signer`, you will see:
 ```
 .signer
 ├── latest_chats.json  # 获取的最近对话

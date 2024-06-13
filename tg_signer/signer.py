@@ -8,6 +8,7 @@ import random
 import sys
 from datetime import datetime, time, timedelta, timezone
 from logging.handlers import RotatingFileHandler
+from typing import TypedDict
 from urllib import parse
 
 from pyrogram import Client as BaseClient, errors
@@ -80,34 +81,43 @@ def make_dirs(path: pathlib.Path, exist_ok=True):
     return path
 
 
-@dataclasses.dataclass
-class SignConfig:
+class SignChat(TypedDict):
     chat_id: int
     sign_text: str
+
+
+@dataclasses.dataclass
+class SignConfig:
+    chats: list[SignChat]
     sign_at: time
     random_seconds: int
 
     def to_jsonable(self):
         return {
-            "chat_id": self.chat_id,
-            "sign_text": self.sign_text,
+            "chats": self.chats,
             "sign_at": self.sign_at.isoformat(),
             "random_seconds": self.random_seconds,
         }
 
     @classmethod
     def from_json(cls, d) -> "SignConfig":
-        return cls(
-            int(d["chat_id"]),
-            d["sign_text"],
-            time.fromisoformat(str(d["sign_at"])),
-            d["random_seconds"],
-        )
+        if "chats" in d:
+            return cls(
+                chats=d["chats"],
+                sign_at=time.fromisoformat(str(d["sign_at"])),
+                random_seconds=d["random_seconds"],
+            )
+        else:
+            return cls(
+                chats=[{"chat_id": d["chat_id"], "sign_text": d["sign_text"]}],
+                sign_at=time.fromisoformat(str(d["sign_at"])),
+                random_seconds=d["random_seconds"],
+            )
 
 
 class UserSigner:
-    def __init__(self, sign_name: str = None, user: User = None):
-        self.sign_name = sign_name
+    def __init__(self, task_name: str = None, user: User = None):
+        self.task_name = task_name
         self.user = user or self.get_me()
 
     @property
@@ -124,7 +134,7 @@ class UserSigner:
 
     @property
     def sign_dir(self):
-        sign_dir = self.signs_dir / str(self.sign_name)
+        sign_dir = self.signs_dir / str(self.task_name)
         make_dirs(sign_dir)
         return sign_dir
 
@@ -156,14 +166,29 @@ class UserSigner:
             fp.write(str(user))
 
     def ask_for_config(self) -> "SignConfig":
-        chat_id = int(input("Chat ID（登录时最近对话输出中的ID）: "))
-        sign_text = input("签到文本（如 /sign）: ") or "/sign"
+        chats = []
+        i = 1
+        print(f"开始配置任务<{self.task_name}>")
+        while True:
+            print(f"第{i}个签到")
+            chat_id = int(input("Chat ID（登录时最近对话输出中的ID）: "))
+            sign_text = input("签到文本（如 /sign）: ") or "/sign"
+            chats.append(
+                {
+                    "chat_id": chat_id,
+                    "sign_text": sign_text,
+                }
+            )
+            continue_ = input("继续配置签到？(y/N)：")
+            if continue_.strip().lower() != "y":
+                break
+            i += 1
         sign_at_str = input("每日签到时间（如 06:00:00）: ") or "06:00:00"
         sign_at_str = sign_at_str.replace("：", ":").strip()
         sign_at = time.fromisoformat(sign_at_str)
         random_seconds_str = input("签到时间误差随机秒数（默认为0）: ") or "0"
         random_seconds = int(float(random_seconds_str))
-        return SignConfig(chat_id, sign_text, sign_at, random_seconds)
+        return SignConfig(chats, sign_at, random_seconds)
 
     def reconfig(self):
         config = self.ask_for_config()
@@ -225,7 +250,7 @@ class UserSigner:
                     ensure_ascii=False,
                 )
 
-    def list(self):
+    def list_(self):
         signs = []
         for d in os.listdir(self.signs_dir):
             if self.signs_dir.joinpath(d).is_dir():
@@ -249,7 +274,8 @@ class UserSigner:
                     now = get_now()
                     logger.info(f"当前时间: {now}")
                     if str(now.date()) not in sign_record:
-                        await self.sign(config.chat_id, config.sign_text)
+                        for chat in config.chats:
+                            await self.sign(chat["chat_id"], chat["sign_text"])
                         sign_record[str(now.date())] = now.isoformat()
                         with open(self.sign_record_file, "w", encoding="utf-8") as fp:
                             json.dump(sign_record, fp)
@@ -282,9 +308,9 @@ async def main():
     if command == "login":
         return await signer.login()
     elif command == "list":
-        return signer.list()
+        return signer.list_()
     name = input("签到任务名（e.g. mojie）：") or "my_sign"
-    signer.sign_name = name
+    signer.task_name = name
     if command == "run":
         return await signer.run()
     elif command == "reconfig":
