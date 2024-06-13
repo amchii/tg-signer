@@ -252,6 +252,7 @@ class UserSigner:
 
     def list_(self):
         signs = []
+        print("已配置的任务：")
         for d in os.listdir(self.signs_dir):
             if self.signs_dir.joinpath(d).is_dir():
                 print(d)
@@ -312,6 +313,7 @@ async def main():
     name = input("签到任务名（e.g. mojie）：") or "my_sign"
     signer.task_name = name
     if command == "run":
+        signer.list_()
         return await signer.run()
     elif command == "reconfig":
         return signer.reconfig()
