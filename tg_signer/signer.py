@@ -165,6 +165,7 @@ class UserSigner:
         with open(self.base_dir.joinpath("me.json"), "w", encoding="utf-8") as fp:
             fp.write(str(user))
 
+
     def ask_for_config(self) -> "SignConfig":
         chats = []
         i = 1
@@ -262,6 +263,20 @@ class UserSigner:
     async def sign(self, chat_id: int, sign_text: str):
         await app.send_message(chat_id, sign_text)
 
+    async def run_once(self, chat_id: int, sign_text: str = "/sign"):
+        if self.user is None:
+            await self.login()
+        try:
+            async with app:
+                now = get_now()
+                logger.info(f"当前时间: {now}")
+                await self.sign(chat_id, sign_text)
+                logger.info(f"签到成功, 签到时间 {now} ")
+        except (OSError, errors.Unauthorized) as e:
+            logger.exception(e)
+            await asyncio.sleep(30)
+
+
     async def run(self):
         if self.user is None:
             await self.login()
@@ -298,7 +313,7 @@ class UserSigner:
 async def main():
     help_text = (
         "Usage: tg-signer <command>\n"
-        "Available commands: list, login, run, reconfig\n\n"
+        "Available commands: list, login, run, run_once，reconfig\n\n"
         "e.g. tg-signer run"
     )
     if len(sys.argv) != 2:
@@ -315,6 +330,9 @@ async def main():
     if command == "run":
         signer.list_()
         return await signer.run()
+    elif command == "run_once":
+        return await signer.run_once()
+
     elif command == "reconfig":
         return signer.reconfig()
     print(help_text)

@@ -12,7 +12,7 @@ pip install "tg-signer[tgcrypto]"
 ## Usage
 ```
 Usage: tg-signer <command>
-Available commands: list, login, run, reconfig
+Available commands: list, login, run, run_once, reconfig
 e.g. tg-signer run
 ```
 #### Configure proxy(if necessary)
@@ -25,6 +25,12 @@ export TG_PROXY=socks5://127.0.0.1:7890
 
 #### Run
 `tg-signer run`
+
+#### Run_Once
+`tg-signer run_once [chat_id] [send_text]`
+
+For a one-time sign-in, which can be used for crontab scheduled tasks.
+
 
 Configure according to the prompts. The data and configuration are stored in the `.signer` directory.
 Then run `tree .signer`, you will see:
