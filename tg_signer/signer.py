@@ -317,8 +317,6 @@ async def main():
         "e.g. tg-signer run"
     )
     command = sys.argv[1].strip().lower()
-    print(command)
-    print(len(sys.argv))
     if command == "run_once" and len(sys.argv) != 4:
        print(help_text)
        sys.exit(1)
