@@ -314,7 +314,9 @@ async def main():
     help_text = (
         "Usage: tg-signer <command>\n"
         "Available commands: list, login, run, run_once，reconfig\n\n"
-        "e.g. tg-signer run"
+        "e.g. tg-signer run\n\n"
+        "e.g. tg-signer run_once [chat_id] [sign_text]"
+
     )
     command = sys.argv[1].strip().lower()
     if command == "run_once" and len(sys.argv) != 4:

@@ -14,6 +14,7 @@ pip install "tg-signer[tgcrypto]"
 Usage: tg-signer <command>
 Available commands: list, login, run, run_once, reconfig
 e.g. tg-signer run
+e.g. tg-signer run_once [chat_id] [send_text]
 ```
 #### Configure proxy(if necessary)
 use env `TG_PROXY`
@@ -29,7 +30,13 @@ export TG_PROXY=socks5://127.0.0.1:7890
 #### Run_Once
 `tg-signer run_once [chat_id] [send_text]`
 
-For a one-time sign-in, which can be used for crontab scheduled tasks.
+For a one-time sign-in, which can be used for crontab scheduled tasks.Before use `run_once`, you need to use `login` command to login telegram.
+
+when you use `login`,you can get the `chat_id` you want. 
+
+`send_text` is send to chat_id's content,like "/sign" 
+
+---
 
 
 Configure according to the prompts. The data and configuration are stored in the `.signer` directory.
