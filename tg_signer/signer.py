@@ -271,6 +271,14 @@ class UserSigner:
                 now = get_now()
                 logger.info(f"当前时间: {now}")
                 await self.sign(chat_id, sign_text)
+                with open(self.base_dir.joinpath("latest_chats.json"), "r", encoding="utf-8") as fp:
+                    latest_chats = json.load(fp)
+                    output = ""
+                    for conversations in latest_chats:
+                        for key, value in conversations.items():
+                            if conversations['id'] == int(chat_id):
+                                output += f"{key}: {value} "
+                    logger.info(f"对话窗口：{output} ")
                 logger.info(f"签到成功, 签到时间 {now} ")
         except (OSError, errors.Unauthorized) as e:
             logger.exception(e)
