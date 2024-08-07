@@ -316,11 +316,18 @@ async def main():
         "Available commands: list, login, run, run_once，reconfig\n\n"
         "e.g. tg-signer run"
     )
-    if len(sys.argv) != 2:
+    command = sys.argv[1].strip().lower()
+    print(command)
+    print(len(sys.argv))
+    if command == "run_once" and len(sys.argv) != 4:
+       print(help_text)
+       sys.exit(1)
+    elif command in ['login','list','run','reconfig'] and len(sys.argv) != 2:
         print(help_text)
         sys.exit(1)
-    command = sys.argv[1].strip().lower()
     signer = UserSigner()
+    if command == "run_once":
+        return await signer.run_once(chat_id=sys.argv[2],sign_text=sys.argv[3])
     if command == "login":
         return await signer.login()
     elif command == "list":
@@ -330,9 +337,6 @@ async def main():
     if command == "run":
         signer.list_()
         return await signer.run()
-    elif command == "run_once":
-        return await signer.run_once()
-
     elif command == "reconfig":
         return signer.reconfig()
     print(help_text)
