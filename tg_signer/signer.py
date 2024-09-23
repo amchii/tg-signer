@@ -8,7 +8,7 @@ import random
 import sys
 from datetime import datetime, time, timedelta, timezone
 from logging.handlers import RotatingFileHandler
-from typing import TypedDict
+from typing import List, TypedDict
 from urllib import parse
 
 from pyrogram import Client as BaseClient, errors
@@ -88,7 +88,7 @@ class SignChat(TypedDict):
 
 @dataclasses.dataclass
 class SignConfig:
-    chats: list[SignChat]
+    chats: List[SignChat]
     sign_at: time
     random_seconds: int
 
