@@ -11,9 +11,18 @@ pip install "tg-signer[tgcrypto]"
 
 ## Usage
 ```
-Usage: tg-signer <command>
-Available commands: list, login, run, reconfig
-e.g. tg-signer run
+Usage: tg-signer <command> [task_name]
+Available commands: list, login, run, run_once, reconfig
+ list: 列出已有配置
+ login: 登录账号（用于获取session）
+ run: 根据配置运行签到
+ run_once: 根据配置运行一次签到
+ reconfig: 重新配置
+
+e.g.:
+ tg-signer run
+ tg-signer run my_sign  # 不询问直接运行'my_sign'任务
+ tg-signer run_once my_sign  # 直接运行一次'my_sign'任务
 ```
 #### Configure proxy(if necessary)
 use env `TG_PROXY`
