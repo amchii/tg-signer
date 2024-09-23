@@ -262,7 +262,10 @@ class UserSigner:
     async def sign(self, chat_id: int, sign_text: str):
         await app.send_message(chat_id, sign_text)
 
-    async def run(self):
+    async def run(self, only_once: bool = False):
+        """
+        :param only_once: 只运行一次
+        """
         if self.user is None:
             await self.login()
 
@@ -274,16 +277,25 @@ class UserSigner:
                 async with app:
                     now = get_now()
                     logger.info(f"当前时间: {now}")
-                    if str(now.date()) not in sign_record:
+                    now_date_str = str(now.date())
+                    if now_date_str not in sign_record:
                         for chat in config.chats:
                             await self.sign(chat["chat_id"], chat["sign_text"])
-                        sign_record[str(now.date())] = now.isoformat()
+                        sign_record[now_date_str] = now.isoformat()
                         with open(self.sign_record_file, "w", encoding="utf-8") as fp:
                             json.dump(sign_record, fp)
+                    else:
+                        print(
+                            f"当前任务今日已签到，签到时间: {sign_record[now_date_str]}"
+                        )
 
             except (OSError, errors.Unauthorized) as e:
                 logger.exception(e)
                 await asyncio.sleep(30)
+                continue
+
+            if only_once:
+                break
 
             next_run = (now + timedelta(days=1)).replace(
                 hour=sign_at.hour,
@@ -294,29 +306,46 @@ class UserSigner:
             logger.info(f"下次运行时间: {next_run}")
             await asyncio.sleep((next_run - now).total_seconds())
 
+    async def run_once(self):
+        return await self.run(only_once=True)
+
 
 async def main():
     help_text = (
-        "Usage: tg-signer <command>\n"
-        "Available commands: list, login, run, reconfig\n\n"
-        "e.g. tg-signer run"
+        "Usage: tg-signer <command> [task_name]\n"
+        "Available commands: list, login, run, run_once, reconfig\n"
+        " list: 列出已有配置\n"
+        " login: 登录账号（用于获取session）\n"
+        " run: 根据配置运行签到\n"
+        " run_once: 根据配置运行一次签到\n"
+        " reconfig: 重新配置\n"
+        "\n"
+        "e.g.:\n"
+        " tg-signer run\n"
+        " tg-signer run my_sign  # 不询问直接运行'my_sign'任务\n"
+        " tg-signer run_once my_sign  # 直接运行一次'my_sign'任务\n"
     )
-    if len(sys.argv) != 2:
+    if len(sys.argv) < 2:
         print(help_text)
         sys.exit(1)
     command = sys.argv[1].strip().lower()
     signer = UserSigner()
+    if command == "list":
+        return signer.list_()
+    signer.list_()
     if command == "login":
         return await signer.login()
-    elif command == "list":
-        return signer.list_()
-    name = input("签到任务名（e.g. mojie）：") or "my_sign"
-    signer.task_name = name
+    if len(sys.argv) == 3:
+        task_name = sys.argv[2]
+    else:
+        task_name = input("签到任务名（e.g. my_sign）：") or "my_sign"
+    signer.task_name = task_name
     if command == "run":
-        signer.list_()
         return await signer.run()
     elif command == "reconfig":
         return signer.reconfig()
+    elif command == "run_once":
+        return await signer.run_once()
     print(help_text)
     sys.exit(1)
 
