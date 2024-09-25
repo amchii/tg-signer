@@ -309,21 +309,30 @@ class UserSigner:
     async def run_once(self):
         return await self.run(only_once=True)
 
+    async def send_text(self, chat_id: int, text: str):
+        if self.user is None:
+            await self.login()
+        async with app:
+            await app.send_message(chat_id, text)
+        print("发送成功")
+
 
 async def main():
     help_text = (
-        "Usage: tg-signer <command> [task_name]\n"
-        "Available commands: list, login, run, run_once, reconfig\n"
+        "Usage: tg-signer <command> [task_name]...\n"
+        "Available commands: list, login, run, run_once, reconfig, send_message\n"
         " list: 列出已有配置\n"
         " login: 登录账号（用于获取session）\n"
         " run: 根据配置运行签到\n"
-        " run_once: 根据配置运行一次签到\n"
+        " run_once: 运行一次签到（可以传额外参数进行配置覆盖）\n"
         " reconfig: 重新配置\n"
+        " send_text: 发送一次消息\n"
         "\n"
         "e.g.:\n"
         " tg-signer run\n"
         " tg-signer run my_sign  # 不询问直接运行'my_sign'任务\n"
         " tg-signer run_once my_sign  # 直接运行一次'my_sign'任务\n"
+        " tg-signer send_text 8671234001 /test  # 向chat_id为'8671234001'的聊天发送'/test'文本"
     )
     if len(sys.argv) < 2:
         print(help_text)
@@ -335,6 +344,13 @@ async def main():
     signer.list_()
     if command == "login":
         return await signer.login()
+    if command == "send_text":
+        if len(sys.argv) != 4:
+            print("Usage: tg-signer send_text <chat_id> <text>")
+            sys.exit(1)
+        chat_id = int(sys.argv[2])
+        text = sys.argv[3]
+        return await signer.send_text(chat_id, text)
     if len(sys.argv) == 3:
         task_name = sys.argv[2]
     else:
