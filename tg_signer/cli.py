@@ -75,9 +75,19 @@ class AliasedGroup(click.Group):
 @click.option(
     "--account",
     "-a",
+    "account",
     default="my_account",
     show_default=True,
     help="自定义账号名称，对应session文件名为<account>.session",
+)
+@click.option(
+    "--workdir",
+    "-w",
+    "workdir",
+    default=".signer",
+    show_default=True,
+    type=click.Path(),
+    help="tg-signer工作目录，用于存储配置和签到记录等",
 )
 @click.pass_context
 def tg_signer(
@@ -87,6 +97,7 @@ def tg_signer(
     proxy: str,
     session_dir: str,
     account: str,
+    workdir: str,
 ):
     from tg_signer.logger import configure_logger
 
@@ -107,6 +118,7 @@ def tg_signer(
     ctx.obj["proxy"] = proxy
     ctx.obj["session_dir"] = session_dir
     ctx.obj["account"] = account
+    ctx.obj["workdir"] = workdir
 
 
 @tg_signer.command(help="Show version")
@@ -134,7 +146,10 @@ def list_():
 @click.pass_obj
 def login(obj, num_of_dialogs):
     signer = UserSigner(
-        account=obj["account"], proxy=obj["proxy"], session_dir=obj["session_dir"]
+        account=obj["account"],
+        proxy=obj["proxy"],
+        session_dir=obj["session_dir"],
+        workdir=obj["workdir"],
     )
     signer.app_run(signer.login(num_of_dialogs))
 
@@ -143,7 +158,10 @@ def login(obj, num_of_dialogs):
 @click.pass_obj
 def logout(obj):
     signer = UserSigner(
-        account=obj["account"], proxy=obj["proxy"], session_dir=obj["session_dir"]
+        account=obj["account"],
+        proxy=obj["proxy"],
+        session_dir=obj["session_dir"],
+        workdir=obj["workdir"],
     )
     signer.app_run(signer.logout())
 
@@ -165,6 +183,7 @@ def run(obj, task_name, num_of_dialogs):
         task_name=task_name,
         proxy=obj["proxy"],
         session_dir=obj["session_dir"],
+        workdir=obj["workdir"],
     )
     signer.app_run(signer.run(num_of_dialogs))
 
@@ -186,6 +205,7 @@ def run_once(obj, task_name, num_of_dialogs):
         task_name=task_name,
         proxy=obj["proxy"],
         session_dir=obj["session_dir"],
+        workdir=obj["workdir"],
     )
     signer.app_run(signer.run_once(num_of_dialogs))
 
@@ -201,7 +221,10 @@ def run_once(obj, task_name, num_of_dialogs):
 @click.pass_obj
 def send_text(obj, chat_id, text):
     singer = UserSigner(
-        account=obj["account"], proxy=obj["proxy"], session_dir=obj["session_dir"]
+        account=obj["account"],
+        proxy=obj["proxy"],
+        session_dir=obj["session_dir"],
+        workdir=obj["workdir"],
     )
     singer.app_run(singer.send_text(chat_id, text))
 

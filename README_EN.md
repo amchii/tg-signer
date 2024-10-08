@@ -35,6 +35,8 @@ Options:
   --session_dir PATH              Directory to store TG sessions, can be relative  [default: .]
   -a, --account TEXT              Custom account name, the corresponding session file is named <account>.session
                                   [default: my_account]
+  -w, --workdir PATH              tg-signer work directory, can be relative  [default:
+                                  .signer]
   --help                          Show this message and exit.
 
 Commands:
