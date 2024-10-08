@@ -5,35 +5,15 @@ import logging
 import os
 import pathlib
 import random
-import sys
 from datetime import datetime, time, timedelta, timezone
-from logging.handlers import RotatingFileHandler
 from typing import List, TypedDict
 from urllib import parse
 
 from pyrogram import Client as BaseClient, errors
 from pyrogram.types import Object, User
 
-format_str = (
-    "[%(levelname)s] [%(name)s] %(asctime)s %(filename)s %(lineno)s %(message)s"
-)
-logging.basicConfig(
-    level=logging.INFO,
-    format=format_str,
-)
-
-logger = logging.getLogger("tg-signer")
-formatter = logging.Formatter(format_str)
-file_handler = RotatingFileHandler(
-    "tg-signer.log",
-    maxBytes=1024 * 1024 * 3,
-    backupCount=10,
-    encoding="utf-8",
-)
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
 root_dir = pathlib.Path(".").absolute()
-local_dir = root_dir / ".signer"
+logger = logging.getLogger("tg-signer")
 
 
 class Client(BaseClient):
@@ -50,9 +30,10 @@ def get_api_config():
     return api_id, api_hash
 
 
-def get_proxy():
-    if tg_proxy := os.environ.get("TG_PROXY"):
-        r = parse.urlparse(tg_proxy)
+def get_proxy(proxy: str = None):
+    proxy = proxy or os.environ.get("TG_PROXY")
+    if proxy:
+        r = parse.urlparse(proxy)
         return {
             "scheme": r.scheme,
             "hostname": r.hostname,
@@ -62,13 +43,10 @@ def get_proxy():
         }
 
 
-def get_client(name: str = "my_account", proxy=None):
+def get_client(name: str = "my_account", proxy: dict = None, workdir="."):
     proxy = proxy or get_proxy()
     api_id, api_hash = get_api_config()
-    return Client(name, api_id, api_hash, proxy=proxy, workdir=".")
-
-
-app = get_client()
+    return Client(name, api_id, api_hash, proxy=proxy, workdir=workdir)
 
 
 def get_now():
@@ -116,9 +94,19 @@ class SignConfig:
 
 
 class UserSigner:
-    def __init__(self, task_name: str = None, user: User = None):
+    def __init__(
+        self,
+        task_name: str = None,
+        session_dir: str = ".",
+        account: str = "my_account",
+        proxy=None,
+    ):
         self.task_name = task_name
-        self.user = user or self.get_me()
+        self._session_dir = session_dir
+        self._account = account
+        self._proxy = proxy
+        self.app = get_client(account, proxy, session_dir)
+        self.user = None
 
     @property
     def base_dir(self):
@@ -214,13 +202,8 @@ class UserSigner:
                 sign_record = json.load(fp)
         return sign_record
 
-    async def login(self, num_of_dialogs=20):
-        num_of_dialogs = int(
-            input(
-                f"获取最近N个对话（默认{num_of_dialogs}，请确保想要签到的对话在最近N个对话内）："
-            )
-            or num_of_dialogs
-        )
+    async def login(self, num_of_dialogs=20, print_chat=True):
+        app = self.app
         async with app:
             me = await app.get_me()
             self.set_me(me)
@@ -237,7 +220,8 @@ class UserSigner:
                         "last_name": chat.last_name,
                     }
                 )
-                print(latest_chats[-1])
+                if print_chat:
+                    print(latest_chats[-1])
 
             with open(
                 self.base_dir.joinpath("latest_chats.json"), "w", encoding="utf-8"
@@ -250,35 +234,44 @@ class UserSigner:
                     ensure_ascii=False,
                 )
 
-    def list_(self):
+    async def logout(self):
+        is_authorized = await self.app.connect()
+        if not is_authorized:
+            await self.app.storage.delete()
+            return
+        return await self.app.log_out()
+
+    def get_task_list(self):
         signs = []
-        print("已配置的任务：")
         for d in os.listdir(self.signs_dir):
             if self.signs_dir.joinpath(d).is_dir():
-                print(d)
                 signs.append(d)
         return signs
 
-    async def sign(self, chat_id: int, sign_text: str):
-        await app.send_message(chat_id, sign_text)
+    def list_(self):
+        print("已配置的任务：")
+        for d in self.get_task_list():
+            print(d)
 
-    async def run(self, only_once: bool = False):
-        """
-        :param only_once: 只运行一次
-        """
+    async def sign(self, chat_id: int, sign_text: str):
+        await self.app.send_message(chat_id, sign_text)
+
+    async def run(
+        self, num_of_dialogs=20, only_once: bool = False, force_rerun: bool = False
+    ):
         if self.user is None:
-            await self.login()
+            await self.login(num_of_dialogs, print_chat=True)
 
         config = self.load_config()
         sign_record = self.load_sign_record()
         sign_at = config.sign_at
         while True:
             try:
-                async with app:
+                async with self.app:
                     now = get_now()
                     logger.info(f"当前时间: {now}")
                     now_date_str = str(now.date())
-                    if now_date_str not in sign_record:
+                    if now_date_str not in sign_record or force_rerun:
                         for chat in config.chats:
                             await self.sign(chat["chat_id"], chat["sign_text"])
                         sign_record[now_date_str] = now.isoformat()
@@ -306,65 +299,14 @@ class UserSigner:
             logger.info(f"下次运行时间: {next_run}")
             await asyncio.sleep((next_run - now).total_seconds())
 
-    async def run_once(self):
-        return await self.run(only_once=True)
+    async def run_once(self, num_of_dialogs):
+        return await self.run(num_of_dialogs, only_once=True, force_rerun=True)
 
     async def send_text(self, chat_id: int, text: str):
         if self.user is None:
-            await self.login()
-        async with app:
-            await app.send_message(chat_id, text)
-        print("发送成功")
+            await self.login(print_chat=False)
+        async with self.app:
+            await self.app.send_message(chat_id, text)
 
-
-async def main():
-    help_text = (
-        "Usage: tg-signer <command> [task_name]...\n"
-        "Available commands: list, login, run, run_once, reconfig, send_message\n"
-        " list: 列出已有配置\n"
-        " login: 登录账号（用于获取session）\n"
-        " run: 根据配置运行签到\n"
-        " run_once: 运行一次签到（可以传额外参数进行配置覆盖）\n"
-        " reconfig: 重新配置\n"
-        " send_text: 发送一次消息\n"
-        "\n"
-        "e.g.:\n"
-        " tg-signer run\n"
-        " tg-signer run my_sign  # 不询问直接运行'my_sign'任务\n"
-        " tg-signer run_once my_sign  # 直接运行一次'my_sign'任务\n"
-        " tg-signer send_text 8671234001 /test  # 向chat_id为'8671234001'的聊天发送'/test'文本"
-    )
-    if len(sys.argv) < 2:
-        print(help_text)
-        sys.exit(1)
-    command = sys.argv[1].strip().lower()
-    signer = UserSigner()
-    if command == "list":
-        return signer.list_()
-    signer.list_()
-    if command == "login":
-        return await signer.login()
-    if command == "send_text":
-        if len(sys.argv) != 4:
-            print("Usage: tg-signer send_text <chat_id> <text>")
-            sys.exit(1)
-        chat_id = int(sys.argv[2])
-        text = sys.argv[3]
-        return await signer.send_text(chat_id, text)
-    if len(sys.argv) == 3:
-        task_name = sys.argv[2]
-    else:
-        task_name = input("签到任务名（e.g. my_sign）：") or "my_sign"
-    signer.task_name = task_name
-    if command == "run":
-        return await signer.run()
-    elif command == "reconfig":
-        return signer.reconfig()
-    elif command == "run_once":
-        return await signer.run_once()
-    print(help_text)
-    sys.exit(1)
-
-
-if __name__ == "__main__":
-    app.run(main())
+    def app_run(self, coroutine=None):
+        self.app.run(coroutine)

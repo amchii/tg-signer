@@ -1,4 +1,9 @@
-def cli():
-    from .signer import app, main
+__all__ = ("cli",)
 
-    app.run(main())
+import sys
+
+
+def cli():
+    from .cli import tg_signer
+
+    sys.exit(tg_signer())

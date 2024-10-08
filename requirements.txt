@@ -4,13 +4,12 @@
 #
 #    pip-compile
 #
---index-url https://mirrors.aliyun.com/pypi/simple/
 
+click==8.1.7
+    # via tg-signer (setup.py)
 pyaes==1.6.1
     # via pyrogram
 pyrogram==2.0.106
     # via tg-signer (setup.py)
 pysocks==1.7.1
     # via pyrogram
-tgcrypto==1.2.5
-    # via tg-signer (setup.py)
