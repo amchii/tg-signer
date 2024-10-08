@@ -34,6 +34,8 @@ Options:
   --session_dir PATH              存储TG Sessions的目录, 可以是相对路径  [default: .]
   -a, --account TEXT              自定义账号名称，对应session文件名为<account>.session
                                   [default: my_account]
+  -w, --workdir PATH              tg-signer工作目录，用于存储配置和签到记录等  [default:
+                                  .signer]
   --help                          Show this message and exit.
 
 Commands:

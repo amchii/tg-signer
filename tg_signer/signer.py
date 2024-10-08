@@ -12,7 +12,6 @@ from urllib import parse
 from pyrogram import Client as BaseClient, errors
 from pyrogram.types import Object, User
 
-root_dir = pathlib.Path(".").absolute()
 logger = logging.getLogger("tg-signer")
 
 
@@ -100,23 +99,25 @@ class UserSigner:
         session_dir: str = ".",
         account: str = "my_account",
         proxy=None,
+        workdir=".signer",
     ):
         self.task_name = task_name
         self._session_dir = session_dir
         self._account = account
         self._proxy = proxy
+        self._workdir = pathlib.Path(workdir)
         self.app = get_client(account, proxy, session_dir)
         self.user = None
 
     @property
-    def base_dir(self):
-        base_dir = root_dir / ".signer"
-        make_dirs(base_dir)
-        return base_dir
+    def workdir(self):
+        workdir = self._workdir
+        make_dirs(workdir)
+        return workdir
 
     @property
     def signs_dir(self):
-        signs_dir = self.base_dir / "signs"
+        signs_dir = self.workdir / "signs"
         make_dirs(signs_dir)
         return signs_dir
 
@@ -135,7 +136,7 @@ class UserSigner:
         return self.sign_dir.joinpath("config.json")
 
     def get_me(self):
-        file = self.base_dir.joinpath("me.json")
+        file = self.workdir.joinpath("me.json")
         if file.is_file():
             with open(file, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -150,7 +151,7 @@ class UserSigner:
 
     def set_me(self, user: User):
         self.user = user
-        with open(self.base_dir.joinpath("me.json"), "w", encoding="utf-8") as fp:
+        with open(self.workdir.joinpath("me.json"), "w", encoding="utf-8") as fp:
             fp.write(str(user))
 
     def ask_for_config(self) -> "SignConfig":
@@ -224,7 +225,7 @@ class UserSigner:
                     print(latest_chats[-1])
 
             with open(
-                self.base_dir.joinpath("latest_chats.json"), "w", encoding="utf-8"
+                self.workdir.joinpath("latest_chats.json"), "w", encoding="utf-8"
             ) as fp:
                 json.dump(
                     latest_chats,
