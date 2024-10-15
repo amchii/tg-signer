@@ -128,10 +128,22 @@ class UserSigner:
             print(f"第{i}个签到")
             chat_id = int(input("Chat ID（登录时最近对话输出中的ID）: "))
             sign_text = input("签到文本（如 /sign）: ") or "/sign"
+            delete_after = (
+                input(
+                    "等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
+                )
+                or ""
+            )
+            print(delete_after)
+            if not delete_after:
+                delete_after = None
+            else:
+                delete_after = int(delete_after)
             chats.append(
                 {
                     "chat_id": chat_id,
                     "sign_text": sign_text,
+                    "delete_after": delete_after,
                 }
             )
             continue_ = input("继续配置签到？(y/N)：")
@@ -231,8 +243,30 @@ class UserSigner:
         for d in self.get_task_list():
             print(d)
 
-    async def sign(self, chat_id: int, sign_text: str):
-        await self.app.send_message(chat_id, sign_text)
+    async def send_message(
+        self, chat_id: int | str, text: str, delete_after: int = None, **kwargs
+    ):
+        """
+        发送文本消息
+        :param chat_id:
+        :param text:
+        :param delete_after: 秒, 发送消息后进行删除，``None`` 表示不删除, ``0`` 表示立即删除.
+        :param kwargs:
+        :return:
+        """
+        message = await self.app.send_message(chat_id, text, **kwargs)
+        if delete_after is not None:
+            logger.info(
+                f"Message「{text}」 to {chat_id} will be deleted after {delete_after} seconds."
+            )
+            logger.info("Waiting...")
+            await asyncio.sleep(delete_after)
+            await message.delete()
+            logger.info(f"Message「{text}」 to {chat_id} deleted!")
+        return message
+
+    async def sign(self, chat_id: int, sign_text: str, delete_after: int = None):
+        await self.send_message(chat_id, sign_text, delete_after)
 
     async def run(
         self, num_of_dialogs=20, only_once: bool = False, force_rerun: bool = False
@@ -251,7 +285,9 @@ class UserSigner:
                     now_date_str = str(now.date())
                     if now_date_str not in sign_record or force_rerun:
                         for chat in config.chats:
-                            await self.sign(chat.chat_id, chat.sign_text)
+                            await self.sign(
+                                chat.chat_id, chat.sign_text, chat.delete_after
+                            )
                         sign_record[now_date_str] = now.isoformat()
                         with open(self.sign_record_file, "w", encoding="utf-8") as fp:
                             json.dump(sign_record, fp)
@@ -280,11 +316,11 @@ class UserSigner:
     async def run_once(self, num_of_dialogs):
         return await self.run(num_of_dialogs, only_once=True, force_rerun=True)
 
-    async def send_text(self, chat_id: int, text: str):
+    async def send_text(self, chat_id: int, text: str, delete_after: int = None):
         if self.user is None:
             await self.login(print_chat=False)
         async with self.app:
-            await self.app.send_message(chat_id, text)
+            await self.send_message(chat_id, text, delete_after)
 
     def app_run(self, coroutine=None):
         self.app.run(coroutine)

@@ -78,6 +78,8 @@ class AliasedGroup(click.Group):
     "account",
     default="my_account",
     show_default=True,
+    show_envvar=True,
+    envvar="TG_ACCOUNT",
     help="自定义账号名称，对应session文件名为<account>.session",
 )
 @click.option(
@@ -193,6 +195,7 @@ def run(obj, task_name, num_of_dialogs):
 @click.option(
     "--num-of-dialogs",
     "-n",
+    "num_of_dialogs",
     default=20,
     show_default=True,
     type=int,
@@ -215,18 +218,23 @@ def run_once(obj, task_name, num_of_dialogs):
     "chat_id",
     type=int,
 )
-@click.argument(
-    "text",
+@click.argument("text")
+@click.option(
+    "--delete-after",
+    "delete_after",
+    type=int,
+    required=False,
+    help="秒, 发送消息后进行删除, 默认不删除, '0'表示立即删除.",
 )
 @click.pass_obj
-def send_text(obj, chat_id, text):
+def send_text(obj, chat_id, text, delete_after=None):
     singer = UserSigner(
         account=obj["account"],
         proxy=obj["proxy"],
         session_dir=obj["session_dir"],
         workdir=obj["workdir"],
     )
-    singer.app_run(singer.send_text(chat_id, text))
+    singer.app_run(singer.send_text(chat_id, text, delete_after))
 
 
 @tg_signer.command(help="重新配置")
