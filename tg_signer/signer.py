@@ -1,16 +1,16 @@
 import asyncio
-import dataclasses
 import json
 import logging
 import os
 import pathlib
 import random
 from datetime import datetime, time, timedelta, timezone
-from typing import List, TypedDict
 from urllib import parse
 
 from pyrogram import Client as BaseClient, errors
 from pyrogram.types import Object, User
+
+from tg_signer.config import SignConfig
 
 logger = logging.getLogger("tg-signer")
 
@@ -56,40 +56,6 @@ def make_dirs(path: pathlib.Path, exist_ok=True):
     if not path.is_dir():
         os.makedirs(path, exist_ok=exist_ok)
     return path
-
-
-class SignChat(TypedDict):
-    chat_id: int
-    sign_text: str
-
-
-@dataclasses.dataclass
-class SignConfig:
-    chats: List[SignChat]
-    sign_at: time
-    random_seconds: int
-
-    def to_jsonable(self):
-        return {
-            "chats": self.chats,
-            "sign_at": self.sign_at.isoformat(),
-            "random_seconds": self.random_seconds,
-        }
-
-    @classmethod
-    def from_json(cls, d) -> "SignConfig":
-        if "chats" in d:
-            return cls(
-                chats=d["chats"],
-                sign_at=time.fromisoformat(str(d["sign_at"])),
-                random_seconds=d["random_seconds"],
-            )
-        else:
-            return cls(
-                chats=[{"chat_id": d["chat_id"], "sign_text": d["sign_text"]}],
-                sign_at=time.fromisoformat(str(d["sign_at"])),
-                random_seconds=d["random_seconds"],
-            )
 
 
 class UserSigner:
@@ -177,12 +143,21 @@ class UserSigner:
         sign_at = time.fromisoformat(sign_at_str)
         random_seconds_str = input("签到时间误差随机秒数（默认为0）: ") or "0"
         random_seconds = int(float(random_seconds_str))
-        return SignConfig(chats, sign_at, random_seconds)
+        return SignConfig.model_validate(
+            {
+                "chats": chats,
+                "sign_at": sign_at,
+                "random_seconds": random_seconds,
+            }
+        )
+
+    def write_config(self, config: SignConfig):
+        with open(self.config_file, "w", encoding="utf-8") as fp:
+            json.dump(config.to_jsonable(), fp)
 
     def reconfig(self):
         config = self.ask_for_config()
-        with open(self.config_file, "w", encoding="utf-8") as fp:
-            json.dump(config.to_jsonable(), fp)
+        self.write_config(config)
         return config
 
     def load_config(self) -> "SignConfig":
@@ -190,7 +165,9 @@ class UserSigner:
             config = self.reconfig()
         else:
             with open(self.config_file, "r", encoding="utf-8") as fp:
-                config = SignConfig.from_json(json.load(fp))
+                config, from_old = SignConfig.load(json.load(fp))
+                if from_old:
+                    self.write_config(config)
         return config
 
     def load_sign_record(self):
@@ -274,7 +251,7 @@ class UserSigner:
                     now_date_str = str(now.date())
                     if now_date_str not in sign_record or force_rerun:
                         for chat in config.chats:
-                            await self.sign(chat["chat_id"], chat["sign_text"])
+                            await self.sign(chat.chat_id, chat.sign_text)
                         sign_record[now_date_str] = now.isoformat()
                         with open(self.sign_record_file, "w", encoding="utf-8") as fp:
                             json.dump(sign_record, fp)
