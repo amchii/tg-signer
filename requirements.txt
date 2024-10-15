@@ -4,12 +4,23 @@
 #
 #    pip-compile
 #
+--index-url https://mirrors.aliyun.com/pypi/simple/
 
+annotated-types==0.7.0
+    # via pydantic
 click==8.1.7
     # via tg-signer (setup.py)
 pyaes==1.6.1
     # via pyrogram
+pydantic==2.9.2
+    # via tg-signer (setup.py)
+pydantic-core==2.23.4
+    # via pydantic
 pyrogram==2.0.106
     # via tg-signer (setup.py)
 pysocks==1.7.1
     # via pyrogram
+typing-extensions==4.12.2
+    # via
+    #   pydantic
+    #   pydantic-core
