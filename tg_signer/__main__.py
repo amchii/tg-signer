@@ -1,9 +1,9 @@
-__all__ = ("cli",)
+__all__ = ("signer",)
 
 import sys
 
 
-def cli():
-    from .cli import tg_signer
+def signer():
+    from tg_signer import cli
 
-    sys.exit(tg_signer())
+    sys.exit(cli.tg_signer())

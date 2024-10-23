@@ -113,6 +113,6 @@ _test*.json
 
 # pyrogram
 *.session
-*.sesion-journal
+*.session-journal
 
 .signer

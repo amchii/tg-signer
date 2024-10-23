@@ -1,7 +1,7 @@
 import click
 from click import Context, HelpFormatter
 
-from tg_signer.signer import UserSigner, get_proxy
+from tg_signer.core import UserSigner, get_proxy
 
 
 class AliasedGroup(click.Group):
@@ -117,6 +117,7 @@ def tg_signer(
             "Using proxy: %s"
             % f"{proxy['scheme']}://{proxy['hostname']}:{proxy['port']}"
         )
+    logger.info(f"Using account: {account}")
     ctx.obj["proxy"] = proxy
     ctx.obj["session_dir"] = session_dir
     ctx.obj["account"] = account
@@ -132,8 +133,9 @@ def version():
 
 
 @tg_signer.command(name="list", help="列出已有配置")
-def list_():
-    return UserSigner().list_()
+@click.pass_obj
+def list_(obj):
+    return UserSigner(workdir=obj["workdir"]).list_()
 
 
 @tg_signer.command(help="登录账号（用于获取session）")
@@ -239,6 +241,7 @@ def send_text(obj, chat_id, text, delete_after=None):
 
 @tg_signer.command(help="重新配置")
 @click.argument("task_name", nargs=1, default="my_sign")
-def reconfig(task_name):
-    signer = UserSigner(task_name=task_name)
+@click.pass_obj
+def reconfig(obj, task_name):
+    signer = UserSigner(task_name=task_name, workdir=obj["workdir"])
     return signer.reconfig()
