@@ -1,9 +1,20 @@
 import re
 from datetime import time
 from functools import cached_property
-from typing import ClassVar, List, Literal, Optional, Self, Tuple, Type, TypeAlias
+from typing import (
+    ClassVar,
+    List,
+    Literal,
+    Optional,
+    Self,
+    Tuple,
+    Type,
+    TypeAlias,
+    Union,
+)
 
 from pydantic import BaseModel, ValidationError
+from pyrogram.types import Message
 
 
 class BaseJSONConfig(BaseModel):
@@ -80,10 +91,12 @@ MatchRuleT: TypeAlias = Literal["exact", "contains", "regex"]
 
 
 class MatchConfig(BaseJSONConfig):
-    chat_id: int  # 聊天ID
+    chat_id: Union[int, str] = None  # 聊天id或username
     rule: MatchRuleT = "exact"  # 匹配规则
     rule_value: str  # 规则值
-    from_user_ids: Optional[List[int]] = None  # 发送者ID，为空时，匹配所有人
+    from_user_ids: Optional[List[Union[int, str]]] = (
+        None  # 发送者id或username，为空时，匹配所有人
+    )
     default_send_text: Optional[str] = None  # 默认发送内容
     send_text_search_regex: Optional[str] = None  # 用正则表达式从消息中提取发送内容
     delete_after: Optional[int] = None
@@ -95,14 +108,35 @@ class MatchConfig(BaseJSONConfig):
             f" default_send_text={self.default_send_text}, send_text_search_regex={self.send_text_search_regex}"
         )
 
-    def match(self, chat_id: int, text: str, from_user_id: int = None) -> bool:
+    @cached_property
+    def from_user_set(self):
+        return set(
+            (
+                "me"
+                if u in ["me", "self"]
+                else u.lower().strip("@") if isinstance(u, str) else u
+            )
+            for u in self.from_user_ids
+        )
+
+    def match_user(self, message: "Message"):
+        if not self.from_user_ids:
+            return True
+        if not message.from_user:
+            return True
+        return (
+            message.from_user.id in self.from_user_set
+            or (
+                message.from_user.username
+                and message.from_user.username.lower() in self.from_user_set
+            )
+            or ("me" in self.from_user_set and message.from_user.is_self)
+        )
+
+    def match_text(self, text: str) -> bool:
         """
-        根据`rule`校验`text`是否匹配，当`from_user_ids`为空时，匹配所有人
+        根据`rule`校验`text`是否匹配
         """
-        if chat_id != self.chat_id:
-            return False
-        if self.from_user_ids and from_user_id not in self.from_user_ids:
-            return False
         rule_value = self.rule_value
         if self.rule == "exact":
             if self.ignore_case:
@@ -116,6 +150,9 @@ class MatchConfig(BaseJSONConfig):
             flags = re.IGNORECASE if self.ignore_case else 0
             return bool(re.search(rule_value, text, flags=flags))
         return False
+
+    def match(self, message: "Message"):
+        return bool(self.match_user(message) and self.match_text(message.text))
 
     def get_send_text(self, text: str):
         send_text = self.default_send_text
@@ -139,6 +176,6 @@ class MonitorConfig(BaseJSONConfig):
     is_current: ClassVar = True
     match_cfgs: List[MatchConfig]
 
-    @cached_property
+    @property
     def chat_ids(self):
-        return {cfg.chat_id for cfg in self.match_cfgs}
+        return [cfg.chat_id for cfg in self.match_cfgs]

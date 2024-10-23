@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import pytest
 
 from tg_signer.config import MatchConfig
@@ -5,43 +7,58 @@ from tg_signer.config import MatchConfig
 
 class TestMatchConfig:
 
-    def test_match_exact(self):
-        config = MatchConfig(chat_id=123, rule="exact", rule_value="hello")
-        assert config.match(chat_id=123, text="hello") is True
-        assert config.match(chat_id=123, text="hELlo") is True
-        assert config.match(chat_id=123, text="hello world") is False
-
-        config.ignore_case = False
-        assert config.match(chat_id=123, text="hELlo") is False
-
-    def test_match_contains(self):
-        config = MatchConfig(chat_id=123, rule="contains", rule_value="world")
-        assert config.match(chat_id=123, text="hello world") is True
-        assert config.match(chat_id=123, text="hello World") is True
-        assert config.match(chat_id=123, text="hello") is False
-
-        config.ignore_case = False
-        assert config.match(chat_id=123, text="hello World") is False
-
-    def test_match_regex(self):
-        config = MatchConfig(chat_id=123, rule="regex", rule_value="^hello")
-        assert config.match(chat_id=123, text="hello world") is True
-        assert config.match(chat_id=123, text="HelLo world") is True
-        assert config.match(chat_id=123, text="world hello") is False
-
-        config.ignore_case = False
-        assert config.match(chat_id=123, text="HelLo world") is False
-
-    def test_match_from_user_id(self):
+    @pytest.mark.parametrize(
+        "chat_id, rule, rule_value, from_user_ids, message_from_user, expected",
+        [
+            (123, "exact", "test", [456], {"id": 456}, True),
+            (123, "exact", "test", ["@username"], {"username": "username"}, True),
+            (123, "exact", "test", None, {"id": 789}, True),
+            (123, "exact", "test", [456], {"id": 789}, False),
+            (123, "exact", "test", ["@Username"], {"username": "username"}, True),
+            (123, "exact", "test", ["@username"], {"username": "wrongusername"}, False),
+            (123, "exact", "test", ["me"], {"is_self": True}, True),
+        ],
+    )
+    def test_match_user(
+        self, chat_id, rule, rule_value, from_user_ids, message_from_user, expected
+    ):
         config = MatchConfig(
-            chat_id=123, rule="exact", rule_value="hello", from_user_ids=[456]
+            chat_id=chat_id,
+            rule=rule,
+            rule_value=rule_value,
+            from_user_ids=from_user_ids,
         )
-        assert config.match(chat_id=123, text="hello", from_user_id=456) is True
-        assert config.match(chat_id=123, text="hello", from_user_id=654) is False
+        message = MagicMock()
+        message.from_user = MagicMock(**message_from_user)
+        assert config.match_user(message) == expected
 
-    def test_match_chat_id(self):
-        config = MatchConfig(chat_id=123, rule="exact", rule_value="hello")
-        assert config.match(chat_id=321, text="hello") is False
+    # 测试用例集
+    @pytest.mark.parametrize(
+        "rule, rule_value, text, ignore_case, expected",
+        [
+            # Exact matching
+            ("exact", "hello", "hello", False, True),
+            ("exact", "hello", "hello", True, True),
+            ("exact", "hello", "world", False, False),
+            # Contains matching
+            ("contains", "hello", "hello world", False, True),
+            ("contains", "hello", "world hello", False, True),
+            ("contains", "hello", "world", False, False),
+            # Regex matching
+            ("regex", r"\bhello\b", "hello world", False, True),
+            ("regex", r"\bhello\b", "world hello", False, True),
+            ("regex", r"\bhello\b", "world", False, False),
+            # Case insensitivity
+            ("exact", "hello", "HELLO", True, True),
+            ("contains", "hello", "HELLO WORLD", True, True),
+            ("regex", r"\bhello\b", "HELLO WORLD", True, True),
+        ],
+    )
+    def test_match_text(self, rule, rule_value, text, ignore_case, expected):
+        # 构建 MatchConfig 实例
+        config = MatchConfig(rule=rule, rule_value=rule_value, ignore_case=ignore_case)
+        # 进行匹配测试
+        assert config.match_text(text) == expected
 
     # 测试默认文本情况
     def test_get_send_text_default(self):

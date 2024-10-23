@@ -422,16 +422,12 @@ class UserMonitor(BaseUserWorker):
 
     async def on_message(self, client, message: Message):
         chat_id = message.chat.id
-        if chat_id not in self.config.chat_ids:
-            return
-        text = message.text
-        from_user_id = message.from_user and message.from_user.id
         for match_cfg in self.config.match_cfgs:
-            if not match_cfg.match(chat_id, text, from_user_id):
+            if not match_cfg.match(message):
                 continue
             logger.info(f"匹配到监控项：{match_cfg}")
             try:
-                send_text = match_cfg.get_send_text(text)
+                send_text = match_cfg.get_send_text(message.text)
                 logger.info(f"发送文本：{send_text}")
                 await self.send_message(
                     chat_id, send_text, delete_after=match_cfg.delete_after
@@ -443,9 +439,9 @@ class UserMonitor(BaseUserWorker):
         if self.user is None:
             await self.login(num_of_dialogs, print_chat=True)
 
-        self.load_config(self.cfg_cls)
+        cfg = self.load_config(self.cfg_cls)
         self.app.add_handler(
-            MessageHandler(self.on_message, filters.text),
+            MessageHandler(self.on_message, filters.text & filters.chat(cfg.chat_ids)),
         )
         async with self.app:
             logger.info("开始监控...")
