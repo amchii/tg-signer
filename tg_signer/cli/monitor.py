@@ -1,3 +1,5 @@
+import logging
+
 import click
 
 from tg_signer.core import UserMonitor
@@ -6,8 +8,18 @@ from .signer import tg_signer
 
 
 @tg_signer.group(name="monitor", help="配置和运行监控")
-def tg_monitor():
-    pass
+@click.pass_context
+def tg_monitor(ctx: click.Context):
+    logger = logging.getLogger("tg-signer")
+    if ctx.invoked_subcommand in [
+        "run",
+    ]:
+        if proxy := ctx.obj.get("proxy"):
+            logger.info(
+                "Using proxy: %s"
+                % f"{proxy['scheme']}://{proxy['hostname']}:{proxy['port']}"
+            )
+        logger.info(f"Using account: {ctx.obj['account']}")
 
 
 @tg_monitor.command(name="list", help="列出已有配置")

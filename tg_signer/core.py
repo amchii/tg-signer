@@ -248,11 +248,11 @@ class UserSigner(BaseUserWorker):
         print(f"开始配置任务<{self.task_name}>")
         while True:
             print(f"第{i}个签到")
-            chat_id = int(input("Chat ID（登录时最近对话输出中的ID）: "))
-            sign_text = input("签到文本（如 /sign）: ") or "/sign"
+            chat_id = int(input("1. Chat ID（登录时最近对话输出中的ID）: "))
+            sign_text = input("2. 签到文本（如 /sign）: ") or "/sign"
             delete_after = (
                 input(
-                    "等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
+                    "3. 等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
                 )
                 or None
             )
@@ -269,10 +269,10 @@ class UserSigner(BaseUserWorker):
             if continue_.strip().lower() != "y":
                 break
             i += 1
-        sign_at_str = input("每日签到时间（如 06:00:00）: ") or "06:00:00"
+        sign_at_str = input("4. 每日签到时间（如 06:00:00）: ") or "06:00:00"
         sign_at_str = sign_at_str.replace("：", ":").strip()
         sign_at = time.fromisoformat(sign_at_str)
-        random_seconds_str = input("签到时间误差随机秒数（默认为0）: ") or "0"
+        random_seconds_str = input("5. 签到时间误差随机秒数（默认为0）: ") or "0"
         random_seconds = int(float(random_seconds_str))
         config = SignConfig.model_validate(
             {
@@ -365,28 +365,39 @@ class UserMonitor(BaseUserWorker):
     def ask_for_config(self) -> "MonitorConfig":
         i = 1
         print(f"开始配置任务<{self.task_name}>")
+        print(
+            "聊天chat id和用户user id均同时支持整数id和字符串username, username必须以@开头，如@neo"
+        )
         match_cfgs = []
         while True:
-            print(f"配置第{i}个监控项")
-            chat_id = int(input("Chat ID（登录时最近对话输出中的ID）: "))
+            print(f"\n配置第{i}个监控项")
+            chat_id = (
+                input("1(chat_id). Chat ID（登录时最近对话输出中的ID）: ")
+            ).strip()
+            if not chat_id.startswith("@"):
+                chat_id = int(chat_id)
             rules = ["exact", "contains", "regex"]
-            while rule := input("匹配规则('exact', 'contains', 'regex'): ") or "exact":
+            while (
+                rule := input("2. 匹配规则('exact', 'contains', 'regex'): ") or "exact"
+            ):
                 if rule in rules:
                     break
                 print("不存在的规则, 请重新输入!")
-            while not (rule_value := input("规则值（不可为空）: ")):
+            while not (rule_value := input("3. 规则值（不可为空）: ")):
                 continue
             from_user_ids = (
                 input(
-                    "只匹配来自特定用户ID的消息（多个用逗号隔开, 匹配所有用户直接回车）: "
+                    "4. 只匹配来自特定用户ID的消息（多个用逗号隔开, 匹配所有用户直接回车）: "
                 )
                 or None
             )
             if from_user_ids:
-                from_user_ids = [int(i) for i in from_user_ids.split(",")]
-            default_send_text = input("默认发送文本: ") or None
+                from_user_ids = [
+                    i if i.startswith("@") else int(i) for i in from_user_ids.split(",")
+                ]
+            default_send_text = input("5. 默认发送文本: ") or None
             while not (
-                send_text_search_regex := input("从消息中提取发送文本的正则表达式: ")
+                send_text_search_regex := input("6. 从消息中提取发送文本的正则表达式: ")
                 or None
             ):
                 if default_send_text:
@@ -396,7 +407,7 @@ class UserMonitor(BaseUserWorker):
 
             delete_after = (
                 input(
-                    "等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
+                    "7. 等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
                 )
                 or None
             )
