@@ -246,3 +246,30 @@ def send_text(obj, chat_id, text, delete_after=None):
 def reconfig(obj, task_name):
     signer = UserSigner(task_name=task_name, workdir=obj["workdir"])
     return signer.reconfig()
+
+
+@tg_signer.command(help="查询聊天（群或频道）的成员, 频道需要管理员权限")
+@click.option("--chat_id", "chat_id", required=True, help="整数id或字符串username")
+@click.option("--admin", "admin", default=False, is_flag=True, help="只列出管理员")
+@click.argument("query", nargs=1, default="")
+@click.option(
+    "--limit",
+    "limit",
+    "-l",
+    default=10,
+    type=int,
+)
+@click.pass_obj
+def list_members(obj, chat_id: str, query: str, admin, limit):
+    signer = UserSigner(
+        account=obj["account"],
+        proxy=obj["proxy"],
+        session_dir=obj["session_dir"],
+        workdir=obj["workdir"],
+    )
+    chat_id = chat_id.strip()
+    if chat_id.startswith("@"):
+        chat_id = chat_id[1:]
+    else:
+        chat_id = int(chat_id)
+    signer.app_run(signer.list_members(chat_id, query, admin=admin, limit=limit))

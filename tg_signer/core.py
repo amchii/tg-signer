@@ -5,10 +5,11 @@ import os
 import pathlib
 import random
 from datetime import datetime, time, timedelta, timezone
-from typing import Type, TypeVar
+from typing import Type, TypeVar, Union
 from urllib import parse
 
 from pyrogram import Client as BaseClient, errors, filters
+from pyrogram.enums import ChatMembersFilter
 from pyrogram.handlers import MessageHandler
 from pyrogram.methods.utilities.idle import idle
 from pyrogram.types import Message, Object, User
@@ -231,6 +232,33 @@ class BaseUserWorker:
             await message.delete()
             logger.info(f"Message「{text}」 to {chat_id} deleted!")
         return message
+
+    async def search_members(
+        self, chat_id: Union[int | str], query: str, admin=False, limit=10
+    ):
+        filter_ = ChatMembersFilter.SEARCH
+        if admin:
+            filter_ = ChatMembersFilter.ADMINISTRATORS
+            query = ""
+        async for member in self.app.get_chat_members(
+            chat_id, query, limit=limit, filter=filter_
+        ):
+            yield member
+
+    async def list_members(
+        self, chat_id: Union[int | str], query: str = "", admin=False, limit=10
+    ):
+        async with self.app:
+            async for member in self.search_members(chat_id, query, admin, limit):
+                print(
+                    User(
+                        id=member.user.id,
+                        username=member.user.username,
+                        first_name=member.user.first_name,
+                        last_name=member.user.last_name,
+                        is_bot=member.user.is_bot,
+                    )
+                )
 
 
 class UserSigner(BaseUserWorker):
