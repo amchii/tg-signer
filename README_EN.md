@@ -1,5 +1,3 @@
-以下是你的项目README的英文版，保留了原有的markdown格式：
-
 ## Telegram Daily Auto Sign-in / Personal, Group, and Channel Message Monitoring and Auto Reply
 
 [中文版](./README.md)
