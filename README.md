@@ -41,6 +41,7 @@ Options:
 
 Commands:
   list       列出已有配置
+  list-members  查询聊天（群或频道）的成员, 频道需要管理员权限
   login      登录账号（用于获取session）
   logout     登出账号并删除session文件
   monitor    配置和运行监控
@@ -61,6 +62,7 @@ tg-signer run my_sign  # 不询问，直接运行'my_sign'任务
 tg-signer run-once my_sign  # 直接运行一次'my_sign'任务
 tg-signer send-text 8671234001 /test  # 向chat_id为'8671234001'的聊天发送'/test'文本
 tg-signer send-text --delete-after 1 8671234001 /test  # 向chat_id为'8671234001'的聊天发送'/test'文本, 并在1秒后删除发送的消息
+tg-signer list-members --chat_id -1001680975844 --admin  # 列出频道的管理员
 tg-signer monitor run  # 配置个人、群组、频道消息监控与自动回复
 ```
 
