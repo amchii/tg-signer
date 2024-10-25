@@ -143,7 +143,7 @@ tg-signer monitor run my_monitor
 1. Chat ID（登录时最近对话输出中的ID）: -4573702599
 2. 匹配规则('exact', 'contains', 'regex'): regex
 3. 规则值（不可为空）: 参与关键词：「.*?」
-4. 只匹配来自特定用户ID的消息（多个用逗号隔开, 匹配所有用户直接回车）: 6181244351
+4. 只匹配来自特定用户ID的消息（多个用逗号隔开, 匹配所有用户直接回车）: 61244351
 5. 默认发送文本:
 6. 从消息中提取发送文本的正则表达式: 参与关键词：「(?P<keyword>(.*?))」\n
 7. 等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: 5
@@ -156,7 +156,7 @@ tg-signer monitor run my_monitor
 
 2. 匹配规则，目前皆**忽略大小写**：
 
-   1. `exact` 为精确匹配，消息必须精确等于该值
+   1. `exact` 为精确匹配，消息必须精确等于该值。
 
    2. `contains` 为包含匹配，如contains="kfc"，那么只要收到的消息中包含"kfc"如"I like MacDonalds rather than KfC"即匹配到（注意忽略了大小写）
 
@@ -170,6 +170,19 @@ tg-signer monitor run my_monitor
    5. 可以设置默认发布文本， 即只要匹配到消息即默认发送该文本
 
    6. 提取发布文本的正则，例如 "参与关键词：「(.*?)」\n" ，注意用括号`(...)` 捕获要提取的文本， 可以捕获第3点示例消息的关键词"我要抽奖"并自动发送
+
+#### 示例运行输出：
+
+```
+[INFO] [tg-signer] 2024-10-25 12:29:06,516 core.py 458 开始监控...
+[INFO] [tg-signer] 2024-10-25 12:29:37,034 core.py 439 匹配到监控项：MatchConfig(chat_id=-4573702599, rule=contains, rule_value=kfc), default_send_text=V me 50, send_text_search_regex=None
+[INFO] [tg-signer] 2024-10-25 12:29:37,035 core.py 442 发送文本：V me 50
+[INFO] [tg-signer] 2024-10-25 12:30:02,726 core.py 439 匹配到监控项：MatchConfig(chat_id=-4573702599, rule=regex, rule_value=参与关键词：「.*?」), default_send_text=None, send_text_search_regex=参与关键词：「(?P<keyword>(.*?))」\n
+[INFO] [tg-signer] 2024-10-25 12:30:02,727 core.py 442 发送文本：我要抽奖
+[INFO] [tg-signer] 2024-10-25 12:30:03,001 core.py 226 Message「我要抽奖」 to -4573702599 will be deleted after 5 seconds.
+[INFO] [tg-signer] 2024-10-25 12:30:03,001 core.py 229 Waiting...
+[INFO] [tg-signer] 2024-10-25 12:30:08,260 core.py 232 Message「我要抽奖」 to -4573702599 deleted!
+```
 
 
 

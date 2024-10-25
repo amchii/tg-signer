@@ -371,9 +371,7 @@ class UserMonitor(BaseUserWorker):
         match_cfgs = []
         while True:
             print(f"\n配置第{i}个监控项")
-            chat_id = (
-                input("1(chat_id). Chat ID（登录时最近对话输出中的ID）: ")
-            ).strip()
+            chat_id = (input("1. Chat ID（登录时最近对话输出中的ID）: ")).strip()
             if not chat_id.startswith("@"):
                 chat_id = int(chat_id)
             rules = ["exact", "contains", "regex"]
