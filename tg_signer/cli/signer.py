@@ -249,7 +249,12 @@ def reconfig(obj, task_name):
 
 
 @tg_signer.command(help="查询聊天（群或频道）的成员, 频道需要管理员权限")
-@click.option("--chat_id", "chat_id", required=True, help="整数id或字符串username")
+@click.option(
+    "--chat_id",
+    "chat_id",
+    required=True,
+    help="整数id或字符串username, username须以@开头",
+)
 @click.option("--admin", "admin", default=False, is_flag=True, help="只列出管理员")
 @click.argument("query", nargs=1, default="")
 @click.option(
@@ -271,5 +276,8 @@ def list_members(obj, chat_id: str, query: str, admin, limit):
     if chat_id.startswith("@"):
         chat_id = chat_id[1:]
     else:
-        chat_id = int(chat_id)
+        try:
+            chat_id = int(chat_id)
+        except ValueError:
+            raise click.UsageError("chat_id为username时必须以@开头")
     signer.app_run(signer.list_members(chat_id, query, admin=admin, limit=limit))
