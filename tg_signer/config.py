@@ -1,20 +1,11 @@
 import re
 from datetime import time
 from functools import cached_property
-from typing import (
-    ClassVar,
-    List,
-    Literal,
-    Optional,
-    Self,
-    Tuple,
-    Type,
-    TypeAlias,
-    Union,
-)
+from typing import ClassVar, List, Literal, Optional, Tuple, Type, Union
 
 from pydantic import BaseModel, ValidationError
 from pyrogram.types import Message
+from typing_extensions import Self, TypeAlias
 
 
 class BaseJSONConfig(BaseModel):
