@@ -11,5 +11,3 @@ RUN pip install /tmp/*.whl && \
     pip install -U "tg-signer[tgcrypto]"
 
 WORKDIR /opt/tg-signer
-
-ENTRYPOINT ["tg-signer"]

@@ -29,5 +29,3 @@ RUN apt-get update && apt-get install -y tzdata && \
     pip install -U "tg-signer[tgcrypto]"
 
 WORKDIR /opt/tg-signer
-
-ENTRYPOINT ["tg-signer"]
