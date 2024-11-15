@@ -36,6 +36,18 @@ class AliasedGroup(click.Group):
                 formatter.write_text(f"{k} -> {v}")
 
 
+def get_signer(task_name, ctx_obj: dict):
+    signer = UserSigner(
+        task_name=task_name,
+        account=ctx_obj["account"],
+        proxy=ctx_obj["proxy"],
+        session_dir=ctx_obj["session_dir"],
+        workdir=ctx_obj["workdir"],
+        session_string=ctx_obj["session_string"],
+    )
+    return signer
+
+
 @click.group(name="tg-signer", help="使用<子命令> --help查看使用说明", cls=AliasedGroup)
 @click.option(
     "--log-level",
@@ -91,6 +103,15 @@ class AliasedGroup(click.Group):
     type=click.Path(),
     help="tg-signer工作目录，用于存储配置和签到记录等",
 )
+@click.option(
+    "--session-string",
+    "session_string",
+    default=None,
+    show_default=True,
+    show_envvar=True,
+    envvar="TG_SESSION_STRING",
+    help="Telegram Session String, 会覆盖环境变量`TG_SESSION_STRING`的值",
+)
 @click.pass_context
 def tg_signer(
     ctx: click.Context,
@@ -100,6 +121,7 @@ def tg_signer(
     session_dir: str,
     account: str,
     workdir: str,
+    session_string: str,
 ):
     from tg_signer.logger import configure_logger
 
@@ -123,6 +145,7 @@ def tg_signer(
     ctx.obj["session_dir"] = session_dir
     ctx.obj["account"] = account
     ctx.obj["workdir"] = workdir
+    ctx.obj["session_string"] = session_string
 
 
 @tg_signer.command(help="Show version")
@@ -150,24 +173,14 @@ def list_(obj):
 )
 @click.pass_obj
 def login(obj, num_of_dialogs):
-    signer = UserSigner(
-        account=obj["account"],
-        proxy=obj["proxy"],
-        session_dir=obj["session_dir"],
-        workdir=obj["workdir"],
-    )
+    signer = get_signer(None, obj)
     signer.app_run(signer.login(num_of_dialogs))
 
 
 @tg_signer.command(help="登出账号并删除session文件")
 @click.pass_obj
 def logout(obj):
-    signer = UserSigner(
-        account=obj["account"],
-        proxy=obj["proxy"],
-        session_dir=obj["session_dir"],
-        workdir=obj["workdir"],
-    )
+    signer = get_signer(None, obj)
     signer.app_run(signer.logout())
 
 
@@ -183,13 +196,7 @@ def logout(obj):
 )
 @click.pass_obj
 def run(obj, task_name, num_of_dialogs):
-    signer = UserSigner(
-        account=obj["account"],
-        task_name=task_name,
-        proxy=obj["proxy"],
-        session_dir=obj["session_dir"],
-        workdir=obj["workdir"],
-    )
+    signer = get_signer(task_name, obj)
     signer.app_run(signer.run(num_of_dialogs))
 
 
@@ -206,13 +213,7 @@ def run(obj, task_name, num_of_dialogs):
 )
 @click.pass_obj
 def run_once(obj, task_name, num_of_dialogs):
-    signer = UserSigner(
-        account=obj["account"],
-        task_name=task_name,
-        proxy=obj["proxy"],
-        session_dir=obj["session_dir"],
-        workdir=obj["workdir"],
-    )
+    signer = get_signer(task_name, obj)
     signer.app_run(signer.run_once(num_of_dialogs))
 
 
@@ -231,12 +232,7 @@ def run_once(obj, task_name, num_of_dialogs):
 )
 @click.pass_obj
 def send_text(obj, chat_id, text, delete_after=None):
-    singer = UserSigner(
-        account=obj["account"],
-        proxy=obj["proxy"],
-        session_dir=obj["session_dir"],
-        workdir=obj["workdir"],
-    )
+    singer = get_signer(None, obj)
     singer.app_run(singer.send_text(chat_id, text, delete_after))
 
 
@@ -266,12 +262,7 @@ def reconfig(obj, task_name):
 )
 @click.pass_obj
 def list_members(obj, chat_id: str, query: str, admin, limit):
-    signer = UserSigner(
-        account=obj["account"],
-        proxy=obj["proxy"],
-        session_dir=obj["session_dir"],
-        workdir=obj["workdir"],
-    )
+    signer = get_signer(None, obj)
     chat_id = chat_id.strip()
     if chat_id.startswith("@"):
         chat_id = chat_id[1:]

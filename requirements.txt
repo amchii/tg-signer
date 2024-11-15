@@ -10,7 +10,7 @@ annotated-types==0.7.0
     # via pydantic
 click==8.1.7
     # via tg-signer (setup.py)
-kurirogram==2.1.30
+kurirogram==2.1.32
     # via tg-signer (setup.py)
 pyaes==1.6.1
     # via kurirogram

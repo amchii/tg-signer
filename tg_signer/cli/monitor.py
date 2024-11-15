@@ -1,6 +1,7 @@
 import logging
 
 import click
+from click import Group
 
 from tg_signer.core import UserMonitor
 
@@ -20,6 +21,9 @@ def tg_monitor(ctx: click.Context):
                 % f"{proxy['scheme']}://{proxy['hostname']}:{proxy['port']}"
             )
         logger.info(f"Using account: {ctx.obj['account']}")
+
+
+tg_monitor: Group
 
 
 @tg_monitor.command(name="list", help="列出已有配置")

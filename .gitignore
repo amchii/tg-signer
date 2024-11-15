@@ -116,3 +116,4 @@ _test*.json
 *.session-journal
 
 .signer
+*.session_string

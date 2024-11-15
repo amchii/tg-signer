@@ -12,6 +12,7 @@ from pyrogram import Client as BaseClient, errors, filters
 from pyrogram.enums import ChatMembersFilter
 from pyrogram.handlers import MessageHandler
 from pyrogram.methods.utilities.idle import idle
+from pyrogram.storage import MemoryStorage
 from pyrogram.types import Message, Object, User
 
 from tg_signer.config import BaseJSONConfig, MatchConfig, MonitorConfig, SignConfig
@@ -20,11 +21,40 @@ logger = logging.getLogger("tg-signer")
 
 
 class Client(BaseClient):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.in_memory and not self.session_string:
+            self.load_session_string()
+            self.storage = MemoryStorage(self.name, self.session_string)
+
     async def __aenter__(self):
         try:
             return await self.start()
         except ConnectionError:
             pass
+
+    @property
+    def session_string_file(self):
+        return self.workdir / (self.name + ".session_string")
+
+    async def save_session_string(self):
+        with open(self.session_string_file, "w") as fp:
+            fp.write(await self.export_session_string())
+
+    def load_session_string(self):
+        logger.info("Loading session_string from local file.")
+        if self.session_string_file.is_file():
+            with open(self.session_string_file, "r") as fp:
+                self.session_string = fp.read()
+                logger.info("The session_string has been loaded.")
+        return self.session_string
+
+    async def log_out(
+        self,
+    ):
+        await super().log_out()
+        if self.session_string_file.is_file():
+            os.remove(self.session_string_file)
 
 
 def get_api_config():
@@ -46,10 +76,26 @@ def get_proxy(proxy: str = None):
         }
 
 
-def get_client(name: str = "my_account", proxy: dict = None, workdir="."):
+def get_client(
+    name: str = "my_account",
+    proxy: dict = None,
+    workdir: str | pathlib.Path = ".",
+    session_string: str = None,
+    in_memory: bool = False,
+    **kwargs,
+):
     proxy = proxy or get_proxy()
     api_id, api_hash = get_api_config()
-    return Client(name, api_id, api_hash, proxy=proxy, workdir=workdir)
+    return Client(
+        name,
+        api_id,
+        api_hash,
+        proxy=proxy,
+        workdir=workdir,
+        session_string=session_string,
+        in_memory=in_memory,
+        **kwargs,
+    )
 
 
 def get_now():
@@ -78,14 +124,22 @@ class BaseUserWorker:
         account: str = "my_account",
         proxy=None,
         workdir=None,
+        session_string: str = None,
+        in_memory: bool = False,
     ):
         self.task_name = task_name
-        self._session_dir = session_dir
+        self._session_dir = pathlib.Path(session_dir)
         self._account = account
         self._proxy = proxy
         if workdir:
             self._workdir = pathlib.Path(workdir)
-        self.app = get_client(account, proxy, session_dir)
+        self.app = get_client(
+            account,
+            proxy,
+            workdir=self._session_dir,
+            session_string=session_string,
+            in_memory=in_memory,
+        )
         self.user = None
         self._config = None
 
@@ -203,6 +257,7 @@ class BaseUserWorker:
                     default=Object.default,
                     ensure_ascii=False,
                 )
+            await self.app.save_session_string()
 
     async def logout(self):
         is_authorized = await self.app.connect()
