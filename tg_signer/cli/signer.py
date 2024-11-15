@@ -44,6 +44,7 @@ def get_signer(task_name, ctx_obj: dict):
         session_dir=ctx_obj["session_dir"],
         workdir=ctx_obj["workdir"],
         session_string=ctx_obj["session_string"],
+        in_memory=ctx_obj["in_memory"],
     )
     return signer
 
@@ -112,6 +113,13 @@ def get_signer(task_name, ctx_obj: dict):
     envvar="TG_SESSION_STRING",
     help="Telegram Session String, 会覆盖环境变量`TG_SESSION_STRING`的值",
 )
+@click.option(
+    "--in-memory",
+    "in_memory",
+    default=False,
+    is_flag=True,
+    help="是否将session存储在内存中，默认为False，存储在文件",
+)
 @click.pass_context
 def tg_signer(
     ctx: click.Context,
@@ -122,6 +130,7 @@ def tg_signer(
     account: str,
     workdir: str,
     session_string: str,
+    in_memory: bool,
 ):
     from tg_signer.logger import configure_logger
 
@@ -146,6 +155,7 @@ def tg_signer(
     ctx.obj["account"] = account
     ctx.obj["workdir"] = workdir
     ctx.obj["session_string"] = session_string
+    ctx.obj["in_memory"] = in_memory
 
 
 @tg_signer.command(help="Show version")
