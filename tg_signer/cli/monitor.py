@@ -8,6 +8,19 @@ from tg_signer.core import UserMonitor
 from .signer import tg_signer
 
 
+def get_monitor(task_name, ctx_obj: dict):
+    monitor = UserMonitor(
+        task_name=task_name,
+        account=ctx_obj["account"],
+        proxy=ctx_obj["proxy"],
+        session_dir=ctx_obj["session_dir"],
+        workdir=ctx_obj["workdir"],
+        session_string=ctx_obj["session_string"],
+        in_memory=ctx_obj["in_memory"],
+    )
+    return monitor
+
+
 @tg_signer.group(name="monitor", help="配置和运行监控")
 @click.pass_context
 def tg_monitor(ctx: click.Context):
@@ -44,13 +57,7 @@ def list_(obj):
 )
 @click.pass_obj
 def run(obj, task_name, num_of_dialogs):
-    monitor = UserMonitor(
-        task_name=task_name,
-        session_dir=obj["session_dir"],
-        account=obj["account"],
-        proxy=obj["proxy"],
-        workdir=obj["workdir"],
-    )
+    monitor = get_monitor(task_name, obj)
     monitor.app_run(monitor.run(num_of_dialogs))
 
 
