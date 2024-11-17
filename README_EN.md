@@ -27,26 +27,30 @@ Subcommand aliases:
 
 Options:
   -l, --log-level [debug|info|warn|error]
-                                  Log level: `debug`, `info`, `warn`, `error`
+                                  Log level, `debug`, `info`, `warn`, `error`
                                   [default: info]
-  --log-file PATH                 Log file path, can be relative  [default: tg-signer.log]
+  --log-file PATH                 Path to log file, can be a relative path  [default: tg-signer.log]
   -p, --proxy TEXT                Proxy address, e.g., socks5://127.0.0.1:1080,
-                                  overrides the `TG_PROXY` environment variable  [env var: TG_PROXY]
-  --session_dir PATH              Directory to store TG sessions, can be relative  [default: .]
-  -a, --account TEXT              Custom account name, the session file is named <account>.session  [env var: TG_ACCOUNT; default: my_account]
-  -w, --workdir PATH              tg-signer working directory, used to store configurations and sign-in records  [default: .signer]
+                                  will override the value of the environment variable `TG_PROXY`  [env var: TG_PROXY]
+  --session_dir PATH              Directory to store TG Sessions, can be a relative path  [default: .]
+  -a, --account TEXT              Custom account name, corresponding session file will be <account>.session  [env var: TG_ACCOUNT; default: my_account]
+  -w, --workdir PATH              tg-signer working directory, used to store configurations and sign-in records, etc.  [default: .signer]
+  --session-string TEXT           Telegram Session String,
+                                  will override the value of the environment variable `TG_SESSION_STRING`  [env var: TG_SESSION_STRING]
+  --in-memory                     Whether to store the session in memory, default is False (stored in file)
   --help                          Show this message and exit.
 
 Commands:
-  list       List existing configurations
-  login      Log into the account (to retrieve session)
-  logout     Log out of the account and delete the session file
-  monitor    Configure and run monitoring
-  reconfig   Reconfigure
-  run        Execute the sign-in based on task configuration
-  run-once   Run the sign-in task once, even if it has already been executed today
-  send-text  Send a message, make sure the session has "seen" the `chat_id` before
-  version    Show version
+  list          List existing configurations
+  list-members  Query members of a chat (group or channel), admin permissions required for channels
+  login         Log in to account (for obtaining session)
+  logout        Log out of account and delete session file
+  monitor       Configure and run monitoring
+  reconfig      Reconfigure settings
+  run           Run sign-in according to task configuration
+  run-once      Run a sign-in task once, even if the task has already been executed today
+  send-text     Send a message once, ensure the current session has "seen" the `chat_id`
+  version       Show version
 ```
 
 Example:

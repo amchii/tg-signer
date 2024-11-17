@@ -41,22 +41,24 @@ Options:
                                   var: TG_ACCOUNT; default: my_account]
   -w, --workdir PATH              tg-signer工作目录，用于存储配置和签到记录等  [default:
                                   .signer]
+  --session-string TEXT           Telegram Session String,
+                                  会覆盖环境变量`TG_SESSION_STRING`的值  [env var:
+                                  TG_SESSION_STRING]
+  --in-memory                     是否将session存储在内存中，默认为False，存储在文件
   --help                          Show this message and exit.
 
 Commands:
-  list       列出已有配置
+  list          列出已有配置
   list-members  查询聊天（群或频道）的成员, 频道需要管理员权限
-  login      登录账号（用于获取session）
-  logout     登出账号并删除session文件
-  monitor    配置和运行监控
-  reconfig   重新配置
-  run        根据任务配置运行签到
-  run-once   运行一次签到任务，即使该签到任务今日已执行过
-  send-text  发送一次消息, 请确保当前会话已经"见过"该`chat_id`
-  version    Show version
+  login         登录账号（用于获取session）
+  logout        登出账号并删除session文件
+  monitor       配置和运行监控
+  reconfig      重新配置
+  run           根据任务配置运行签到
+  run-once      运行一次签到任务，即使该签到任务今日已执行过
+  send-text     发送一次消息, 请确保当前会话已经"见过"该`chat_id`
+  version       Show version
 ```
-
-
 
 例如:
 
@@ -158,24 +160,28 @@ tg-signer monitor run my_monitor
 
 #### 示例解释：
 
-1. 聊天`chat id`和用户`user id`均同时支持整数**id**和字符串**username**, username**必须以@开头** 如"neo"输入"@neo"，注意**username** 可能不存在，示例中`chat id`为-4573702599表示规则只对-4573702599对应的聊天有效。
+1. 聊天`chat id`和用户`user id`均同时支持整数**id**和字符串**username**, username**必须以@开头** 如"neo"输入"@neo"，注意*
+   *username** 可能不存在，示例中`chat id`为-4573702599表示规则只对-4573702599对应的聊天有效。
 
 2. 匹配规则，目前皆**忽略大小写**：
 
-   1. `exact` 为精确匹配，消息必须精确等于该值。
+    1. `exact` 为精确匹配，消息必须精确等于该值。
 
-   2. `contains` 为包含匹配，如contains="kfc"，那么只要收到的消息中包含"kfc"如"I like MacDonalds rather than KfC"即匹配到（注意忽略了大小写）
+    2. `contains` 为包含匹配，如contains="kfc"，那么只要收到的消息中包含"kfc"如"I like MacDonalds rather than KfC"
+       即匹配到（注意忽略了大小写）
 
-   3. `regex` 为正则，参考  [Python正则表达式](https://docs.python.org/zh-cn/3/library/re.html) ，在消息中有**搜索到该正则即匹配**，示例中的 "参与关键词：「.*?」" 可以匹配消息： "新的抽奖已经创建...
-      参与关键词：「我要抽奖」
+    3. `regex` 为正则，参考  [Python正则表达式](https://docs.python.org/zh-cn/3/library/re.html) ，在消息中有**搜索到该正则即匹配
+       **，示例中的 "参与关键词：「.*?」" 可以匹配消息： "新的抽奖已经创建...
+       参与关键词：「我要抽奖」
 
-      建议先私聊机器人"
+       建议先私聊机器人"
 
-   4. 可以只匹配来自特定用户的消息，如群管理员而不是随便什么人发布的抽奖消息
+    4. 可以只匹配来自特定用户的消息，如群管理员而不是随便什么人发布的抽奖消息
 
-   5. 可以设置默认发布文本， 即只要匹配到消息即默认发送该文本
+    5. 可以设置默认发布文本， 即只要匹配到消息即默认发送该文本
 
-   6. 提取发布文本的正则，例如 "参与关键词：「(.*?)」\n" ，注意用括号`(...)` 捕获要提取的文本， 可以捕获第3点示例消息的关键词"我要抽奖"并自动发送
+    6. 提取发布文本的正则，例如 "参与关键词：「(.*?)」\n" ，注意用括号`(...)` 捕获要提取的文本，
+       可以捕获第3点示例消息的关键词"我要抽奖"并自动发送
 
 #### 示例运行输出：
 
@@ -190,8 +196,6 @@ tg-signer monitor run my_monitor
 [INFO] [tg-signer] 2024-10-25 12:30:08,260 core.py 232 Message「我要抽奖」 to -4573702599 deleted!
 ```
 
-
-
 ### 配置与数据存储位置
 
 数据和配置默认保存在 `.signer` 目录中。然后运行 `tree .signer`，你将看到：
@@ -200,7 +204,10 @@ tg-signer monitor run my_monitor
 .signer
 ├── latest_chats.json  # 获取的最近对话
 ├── me.json  # 个人信息
-└── signs
+├── monitors  # 监控
+│   ├── my_monitor  # 监控任务名
+│       └── config.json  # 监控配置
+└── signs  # 签到任务
     └── linuxdo  # 签到任务名
         ├── config.json  # 签到配置
         └── sign_record.json  # 签到记录
