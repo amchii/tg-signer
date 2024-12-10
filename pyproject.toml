@@ -24,7 +24,8 @@ dependencies = [
 ]
 
 [project.urls]
-Source = "https://github.com/amchii/tg-signer"
+Homepage = "https://github.com/amchii/tg-signer"
+Repository = "https://github.com/amchii/tg-signer"
 
 [project.optional-dependencies]
 tgcrypto = [
@@ -46,14 +47,21 @@ version = { attr = "tg_signer.__version__" }
 [tool.setuptools.packages.find]
 exclude = ["tests*"]
 
-[tool.flake8]
-ignore = ["E203", "E266", "E402", "E501", "W503", "W504", "B950", "F405", "F403", "C901"]
-max-complexity = 50
-select = ["B", "C", "E", "F", "W"]
+[tool.ruff]
+line-length = 88
+src = ["src", "tests"]
 
-[tool.isort]
-profile = "black"
-skip = ["migrations"]
-combine_as_imports = true
-include_trailing_comma = true
-multi_line_output = 3
+[tool.ruff.lint]
+extend-select = [
+    "I", # isort
+    "B", # flake8-bugbear
+    "W", # pycodestyle
+    "C4", # flake8-comprehensions
+]
+ignore = [
+    "E501", # line too long, handled by black
+    "B008", # do not perform function calls in argument defaults
+    "C901", # too complex
+    "W191", # indentation contains tabs
+    "B019"  # Use of `functools.lru_cache` or `functools.cache` on methods can lead to memory leaks
+]
