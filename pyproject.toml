@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tg-signer"
+dynamic = ["version"]
+description = "Telegram signer"
+authors = [
+    { name = "Amchii", email = "finethankuandyou@gmail.com" }
+]
+license = { text = "BSD 3-Clause License" }
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3 :: Only"
+]
+dependencies = [
+    "kurirogram",
+    "click",
+    "pydantic"
+]
+
+[project.urls]
+Source = "https://github.com/amchii/tg-signer"
+
+[project.optional-dependencies]
+tgcrypto = [
+    "tgcrypto"
+]
+speedup = [
+    "tgcrypto"
+]
+
+[project.scripts]
+tg-signer = "tg_signer.__main__:signer"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = { attr = "tg_signer.__version__" }
+
+[tool.setuptools.packages.find]
+exclude = ["tests*"]
+
+[tool.flake8]
+ignore = ["E203", "E266", "E402", "E501", "W503", "W504", "B950", "F405", "F403", "C901"]
+max-complexity = 50
+select = ["B", "C", "E", "F", "W"]
+
+[tool.isort]
+profile = "black"
+skip = ["migrations"]
+combine_as_imports = true
+include_trailing_comma = true
+multi_line_output = 3
