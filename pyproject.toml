@@ -63,5 +63,6 @@ ignore = [
     "B008", # do not perform function calls in argument defaults
     "C901", # too complex
     "W191", # indentation contains tabs
-    "B019"  # Use of `functools.lru_cache` or `functools.cache` on methods can lead to memory leaks
+    "B019",  # Use of `functools.lru_cache` or `functools.cache` on methods can lead to memory leaks
+    "B904"  # raise without from inside except
 ]

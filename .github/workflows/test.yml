@@ -30,11 +30,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pytest
-          pip install -r requirements.txt
+          pip install -r requirements_dev.txt
       - name: Lint with flake8
         run: |
-          pip install flake8
-          flake8 tg_signer
+          ruff check
 
       - name: Run tests
         run: |

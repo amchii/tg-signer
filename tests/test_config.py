@@ -1,12 +1,10 @@
 from unittest.mock import MagicMock
 
 import pytest
-
 from tg_signer.config import MatchConfig
 
 
 class TestMatchConfig:
-
     @pytest.mark.parametrize(
         "chat_id, rule, rule_value, from_user_ids, message_from_user, expected",
         [
