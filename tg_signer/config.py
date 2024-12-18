@@ -64,6 +64,11 @@ class SignChat(BaseJSONConfig):
     chat_id: int
     sign_text: str
     delete_after: Optional[int] = None
+    text_of_btn_to_click: str = None  # 需要点击的按钮的文本
+
+    @property
+    def has_keyboard(self):
+        return bool(self.text_of_btn_to_click)
 
 
 class SignConfigV2(BaseJSONConfig):
@@ -74,6 +79,9 @@ class SignConfigV2(BaseJSONConfig):
     chats: List[SignChat]
     sign_at: time
     random_seconds: int
+
+    def get_chat(self, chat_id: int):
+        return next((c for c in self.chats if c.chat_id == chat_id), None)
 
 
 SignConfig = SignConfigV2
@@ -101,14 +109,16 @@ class MatchConfig(BaseJSONConfig):
 
     @cached_property
     def from_user_set(self):
-        return set(
+        return {
             (
                 "me"
                 if u in ["me", "self"]
-                else u.lower().strip("@") if isinstance(u, str) else u
+                else u.lower().strip("@")
+                if isinstance(u, str)
+                else u
             )
             for u in self.from_user_ids
-        )
+        }
 
     def match_user(self, message: "Message"):
         if not self.from_user_ids:
@@ -153,10 +163,10 @@ class MatchConfig(BaseJSONConfig):
                 return send_text
             try:
                 send_text = m.group(1)
-            except IndexError:
+            except IndexError as e:
                 raise ValueError(
                     f"{self}: 消息文本: 「{text}」匹配成功但未能捕获关键词, 请检查正则表达式"
-                )
+                ) from e
         return send_text
 
 

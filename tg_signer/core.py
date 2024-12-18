@@ -4,20 +4,43 @@ import logging
 import os
 import pathlib
 import random
-from datetime import datetime, time, timedelta, timezone
-from typing import Type, TypeVar, Union
+import time
+from datetime import datetime, timedelta, timezone
+from datetime import time as dt_time
+from typing import Type, TypedDict, TypeVar, Union
 from urllib import parse
 
-from pyrogram import Client as BaseClient, errors, filters
+from pyrogram import Client as BaseClient
+from pyrogram import errors, filters
 from pyrogram.enums import ChatMembersFilter
 from pyrogram.handlers import MessageHandler
 from pyrogram.methods.utilities.idle import idle
 from pyrogram.storage import MemoryStorage
-from pyrogram.types import Message, Object, User
+from pyrogram.types import (
+    InlineKeyboardMarkup,
+    Message,
+    Object,
+    User,
+)
 
 from tg_signer.config import BaseJSONConfig, MatchConfig, MonitorConfig, SignConfig
 
 logger = logging.getLogger("tg-signer")
+
+
+def readable_message(message: Message):
+    s = "\nMessage: "
+    s += f"\n  text: {message.text or ''}"
+    if message.photo:
+        s += f"\n  图片: [({message.photo.width}x{message.photo.height}) {message.caption}]"
+    if message.reply_markup:
+        if isinstance(message.reply_markup, InlineKeyboardMarkup):
+            s += "\n  InlineKeyboard: "
+            for row in message.reply_markup.inline_keyboard:
+                s += "\n   "
+                for button in row:
+                    s += f"{button.text} | "
+    return s
 
 
 class Client(BaseClient):
@@ -126,8 +149,9 @@ class BaseUserWorker:
         workdir=None,
         session_string: str = None,
         in_memory: bool = False,
+        context=None,
     ):
-        self.task_name = task_name
+        self.task_name = task_name or "my_task"
         self._session_dir = pathlib.Path(session_dir)
         self._account = account
         self._proxy = proxy
@@ -142,6 +166,12 @@ class BaseUserWorker:
         )
         self.user = None
         self._config = None
+        self.context = context
+        if self.context is None:
+            self.ensure_ctx()
+
+    def ensure_ctx(self):
+        self.context = {}
 
     def app_run(self, coroutine=None):
         self.app.run(coroutine)
@@ -169,8 +199,8 @@ class BaseUserWorker:
         return self.task_dir.joinpath("config.json")
 
     @property
-    def config(self):
-        return self._config
+    def config(self) -> ConfigT:
+        return self._config or self.load_config()
 
     @config.setter
     def config(self, value):
@@ -316,10 +346,18 @@ class BaseUserWorker:
                 )
 
 
+class UserSignerWorkerContext(TypedDict, total=False):
+    waiting_click_chats: set[int]
+
+
 class UserSigner(BaseUserWorker):
     _workdir = ".signer"
     _tasks_dir = "signs"
     cfg_cls = SignConfig
+    context: UserSignerWorkerContext
+
+    def ensure_ctx(self):
+        self.context = {"waiting_click_chats": set()}
 
     @property
     def sign_record_file(self):
@@ -341,11 +379,16 @@ class UserSigner(BaseUserWorker):
             )
             if delete_after:
                 delete_after = int(delete_after)
+            has_keyboard = input("4. 是否有键盘？(y/N)：")
+            text_of_btn_to_click = None
+            if has_keyboard.strip().lower() == "y":
+                text_of_btn_to_click = input("5. 键盘中需要点击的按钮文本: ").strip()
             chats.append(
                 {
                     "chat_id": chat_id,
                     "sign_text": sign_text,
                     "delete_after": delete_after,
+                    "text_of_btn_to_click": text_of_btn_to_click,
                 }
             )
             continue_ = input("继续配置签到？(y/N)：")
@@ -354,7 +397,7 @@ class UserSigner(BaseUserWorker):
             i += 1
         sign_at_str = input("4. 每日签到时间（如 06:00:00）: ") or "06:00:00"
         sign_at_str = sign_at_str.replace("：", ":").strip()
-        sign_at = time.fromisoformat(sign_at_str)
+        sign_at = dt_time.fromisoformat(sign_at_str)
         random_seconds_str = input("5. 签到时间误差随机秒数（默认为0）: ") or "0"
         random_seconds = int(float(random_seconds_str))
         config = SignConfig.model_validate(
@@ -393,20 +436,40 @@ class UserSigner(BaseUserWorker):
         config = self.load_config(self.cfg_cls)
         sign_record = self.load_sign_record()
         sign_at = config.sign_at
+        chat_ids = [c.chat_id for c in config.chats]
         while True:
+            logger.info(f"为以下Chat添加消息回调处理函数：{chat_ids}")
+            self.app.add_handler(
+                MessageHandler(self.on_message, filters.chat(chat_ids))
+            )
             try:
                 async with self.app:
                     now = get_now()
                     logger.info(f"当前时间: {now}")
                     now_date_str = str(now.date())
+                    self.context["waiting_click_chats"].clear()
                     if now_date_str not in sign_record or force_rerun:
                         for chat in config.chats:
                             await self.sign(
                                 chat.chat_id, chat.sign_text, chat.delete_after
                             )
+                            if chat.has_keyboard:
+                                self.context["waiting_click_chats"].add(chat.chat_id)
                         sign_record[now_date_str] = now.isoformat()
                         with open(self.sign_record_file, "w", encoding="utf-8") as fp:
                             json.dump(sign_record, fp)
+
+                        wait_seconds = 600
+                        logger.info(
+                            f"最多等待{wait_seconds}秒，用于响应可能的键盘点击..."
+                        )
+                        _start = time.perf_counter()
+                        while (time.perf_counter() - _start) <= wait_seconds and bool(
+                            self.context["waiting_click_chats"]
+                        ):
+                            await asyncio.sleep(1)
+                        logger.info("Done")
+
                     else:
                         print(
                             f"当前任务今日已签到，签到时间: {sign_record[now_date_str]}"
@@ -437,6 +500,38 @@ class UserSigner(BaseUserWorker):
             await self.login(print_chat=False)
         async with self.app:
             await self.send_message(chat_id, text, delete_after)
+
+    async def on_message(self, client, message: Message):
+        logger.info(
+            f"收到消息来自「{message.from_user.username or message.from_user.id}」的消息: {readable_message(message)}"
+        )
+        chat = self.config.get_chat(message.chat.id)
+        if not chat:
+            logger.warning("忽略意料之外的聊天")
+            return
+        if not chat.has_keyboard:
+            logger.info("未配置需要点击的按钮的文本")
+            return
+        text_of_btn_to_click = chat.text_of_btn_to_click
+        if reply_markup := message.reply_markup:
+            if isinstance(reply_markup, InlineKeyboardMarkup):
+                flat_buttons = (b for row in reply_markup.inline_keyboard for b in row)
+                for btn in flat_buttons:
+                    if text_of_btn_to_click in btn.text:
+                        logger.info(f"点击按钮: {btn.text}")
+                        try:
+                            await client.request_callback_answer(
+                                message.chat.id,
+                                message.id,
+                                callback_data=btn.callback_data,
+                            )
+                            logger.info("点击完成")
+                        except (errors.BadRequest, TimeoutError) as e:
+                            logger.error("点击失败")
+                            logger.error(e)
+                        self.context["waiting_click_chats"].discard(chat.chat_id)
+                        return
+                logger.warning("未匹配到需要点击的按钮")
 
 
 class UserMonitor(BaseUserWorker):
@@ -495,15 +590,15 @@ class UserMonitor(BaseUserWorker):
             if delete_after:
                 delete_after = int(delete_after)
             match_cfg = MatchConfig.model_validate(
-                dict(
-                    chat_id=chat_id,
-                    rule=rule,
-                    rule_value=rule_value,
-                    from_user_ids=from_user_ids,
-                    default_send_text=default_send_text,
-                    send_text_search_regex=send_text_search_regex,
-                    delete_after=delete_after,
-                )
+                {
+                    "chat_id": chat_id,
+                    "rule": rule,
+                    "rule_value": rule_value,
+                    "from_user_ids": from_user_ids,
+                    "default_send_text": default_send_text,
+                    "send_text_search_regex": send_text_search_regex,
+                    "delete_after": delete_after,
+                }
             )
             match_cfgs.append(match_cfg)
             continue_ = input("继续配置？(y/N)：")
