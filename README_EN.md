@@ -3,6 +3,7 @@
 [中文版](./README.md)
 
 ### Installation
+Requires Python 3.9 and above
 
 ```sh
 pip install -U tg-signer

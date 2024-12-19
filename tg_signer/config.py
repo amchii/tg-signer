@@ -65,10 +65,11 @@ class SignChat(BaseJSONConfig):
     sign_text: str
     delete_after: Optional[int] = None
     text_of_btn_to_click: str = None  # 需要点击的按钮的文本
+    choose_option_by_image: bool = False  # 需要根据图片选择选项
 
     @property
     def has_keyboard(self):
-        return bool(self.text_of_btn_to_click)
+        return bool(self.text_of_btn_to_click) or self.choose_option_by_image
 
 
 class SignConfigV2(BaseJSONConfig):
@@ -79,9 +80,6 @@ class SignConfigV2(BaseJSONConfig):
     chats: List[SignChat]
     sign_at: time
     random_seconds: int
-
-    def get_chat(self, chat_id: int):
-        return next((c for c in self.chats if c.chat_id == chat_id), None)
 
 
 SignConfig = SignConfigV2

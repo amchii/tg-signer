@@ -3,6 +3,7 @@
 [English](./README_EN.md)
 
 ### 安装
+需要Python3.9及以上
 
 ```sh
 pip install -U tg-signer

@@ -5,9 +5,10 @@ import os
 import pathlib
 import random
 import time
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from datetime import time as dt_time
-from typing import Type, TypedDict, TypeVar, Union
+from typing import BinaryIO, Optional, Type, TypedDict, TypeVar, Union
 from urllib import parse
 
 from pyrogram import Client as BaseClient
@@ -17,15 +18,26 @@ from pyrogram.handlers import MessageHandler
 from pyrogram.methods.utilities.idle import idle
 from pyrogram.storage import MemoryStorage
 from pyrogram.types import (
+    InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
     Object,
     User,
 )
 
-from tg_signer.config import BaseJSONConfig, MatchConfig, MonitorConfig, SignConfig
+from tg_signer.config import (
+    BaseJSONConfig,
+    MatchConfig,
+    MonitorConfig,
+    SignChat,
+    SignConfig,
+)
+
+from .ai_tools import choose_option_by_image, get_openai_client
 
 logger = logging.getLogger("tg-signer")
+
+print_to_user = print
 
 
 def readable_message(message: Message):
@@ -149,7 +161,6 @@ class BaseUserWorker:
         workdir=None,
         session_string: str = None,
         in_memory: bool = False,
-        context=None,
     ):
         self.task_name = task_name or "my_task"
         self._session_dir = pathlib.Path(session_dir)
@@ -166,12 +177,10 @@ class BaseUserWorker:
         )
         self.user = None
         self._config = None
-        self.context = context
-        if self.context is None:
-            self.ensure_ctx()
+        self.context = self.ensure_ctx()
 
     def ensure_ctx(self):
-        self.context = {}
+        return {}
 
     def app_run(self, coroutine=None):
         self.app.run(coroutine)
@@ -275,7 +284,7 @@ class BaseUserWorker:
                     }
                 )
                 if print_chat:
-                    print(latest_chats[-1])
+                    print_to_user(latest_chats[-1])
 
             with open(
                 self.workdir.joinpath("latest_chats.json"), "w", encoding="utf-8"
@@ -335,7 +344,7 @@ class BaseUserWorker:
     ):
         async with self.app:
             async for member in self.search_members(chat_id, query, admin, limit):
-                print(
+                print_to_user(
                     User(
                         id=member.user.id,
                         username=member.user.username,
@@ -346,8 +355,38 @@ class BaseUserWorker:
                 )
 
 
+class WaitCounter:
+    def __init__(self):
+        self.waiting_ids = set()
+        self.waiting_counter = Counter()
+
+    def add(self, elm):
+        self.waiting_ids.add(elm)
+        self.waiting_counter[elm] += 1
+
+    def discard(self, elm):
+        self.waiting_ids.discard(elm)
+        self.waiting_counter.pop(elm, None)
+
+    def sub(self, elm):
+        self.waiting_counter[elm] -= 1
+        if self.waiting_counter[elm] <= 0:
+            self.discard(elm)
+
+    def clear(self):
+        self.waiting_ids.clear()
+        self.waiting_counter.clear()
+
+    def __bool__(self):
+        return bool(self.waiting_ids)
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: {self.waiting_counter}>"
+
+
 class UserSignerWorkerContext(TypedDict, total=False):
-    waiting_click_chats: set[int]
+    waiting_counter: WaitCounter
+    sign_chats: dict[int, list[SignChat]]
 
 
 class UserSigner(BaseUserWorker):
@@ -356,8 +395,8 @@ class UserSigner(BaseUserWorker):
     cfg_cls = SignConfig
     context: UserSignerWorkerContext
 
-    def ensure_ctx(self):
-        self.context = {"waiting_click_chats": set()}
+    def ensure_ctx(self) -> UserSignerWorkerContext:
+        return {"waiting_counter": WaitCounter(), "sign_chats": defaultdict(list)}
 
     @property
     def sign_record_file(self):
@@ -366,9 +405,9 @@ class UserSigner(BaseUserWorker):
     def ask_for_config(self) -> "SignConfig":
         chats = []
         i = 1
-        print(f"开始配置任务<{self.task_name}>")
+        print_to_user(f"开始配置任务<{self.task_name}>")
         while True:
-            print(f"第{i}个签到")
+            print_to_user(f"第{i}个签到")
             chat_id = int(input("1. Chat ID（登录时最近对话输出中的ID）: "))
             sign_text = input("2. 签到文本（如 /sign）: ") or "/sign"
             delete_after = (
@@ -381,14 +420,25 @@ class UserSigner(BaseUserWorker):
                 delete_after = int(delete_after)
             has_keyboard = input("4. 是否有键盘？(y/N)：")
             text_of_btn_to_click = None
+            choose_option_by_image_ = False
             if has_keyboard.strip().lower() == "y":
                 text_of_btn_to_click = input("5. 键盘中需要点击的按钮文本: ").strip()
+                choose_option_by_image_input = input(
+                    "6. 是否需要通过图片识别选择选项？(y/N)："
+                )
+                if choose_option_by_image_input.strip().lower() == "y":
+                    choose_option_by_image_ = True
+                    print_to_user(
+                        "在运行前请通过环境变量正确设置`OPENAI_API_KEY`, `OPENAI_BASE_URL`。"
+                        '默认模型为"gpt-4o", 可通过环境变量`OPENAI_MODEL`更改。'
+                    )
             chats.append(
                 {
                     "chat_id": chat_id,
                     "sign_text": sign_text,
                     "delete_after": delete_after,
                     "text_of_btn_to_click": text_of_btn_to_click,
+                    "choose_option_by_image": choose_option_by_image_,
                 }
             )
             continue_ = input("继续配置签到？(y/N)：")
@@ -420,12 +470,12 @@ class UserSigner(BaseUserWorker):
         return sign_record
 
     def list_(self):
-        print("已配置的任务：")
+        print_to_user("已配置的任务：")
         for d in self.get_task_list():
-            print(d)
+            print_to_user(d)
 
     async def sign(self, chat_id: int, sign_text: str, delete_after: int = None):
-        await self.send_message(chat_id, sign_text, delete_after)
+        return await self.send_message(chat_id, sign_text, delete_after)
 
     async def run(
         self, num_of_dialogs=20, only_once: bool = False, force_rerun: bool = False
@@ -447,31 +497,33 @@ class UserSigner(BaseUserWorker):
                     now = get_now()
                     logger.info(f"当前时间: {now}")
                     now_date_str = str(now.date())
-                    self.context["waiting_click_chats"].clear()
+                    self.context["waiting_counter"].clear()
                     if now_date_str not in sign_record or force_rerun:
                         for chat in config.chats:
+                            self.context["sign_chats"][chat.chat_id].append(chat)
                             await self.sign(
                                 chat.chat_id, chat.sign_text, chat.delete_after
                             )
                             if chat.has_keyboard:
-                                self.context["waiting_click_chats"].add(chat.chat_id)
+                                self.context["waiting_counter"].add(chat.chat_id)
+                            await asyncio.sleep(0.5)
                         sign_record[now_date_str] = now.isoformat()
                         with open(self.sign_record_file, "w", encoding="utf-8") as fp:
                             json.dump(sign_record, fp)
 
-                        wait_seconds = 600
+                        wait_seconds = 300
                         logger.info(
                             f"最多等待{wait_seconds}秒，用于响应可能的键盘点击..."
                         )
                         _start = time.perf_counter()
                         while (time.perf_counter() - _start) <= wait_seconds and bool(
-                            self.context["waiting_click_chats"]
+                            self.context["waiting_counter"]
                         ):
                             await asyncio.sleep(1)
                         logger.info("Done")
 
                     else:
-                        print(
+                        print_to_user(
                             f"当前任务今日已签到，签到时间: {sign_record[now_date_str]}"
                         )
 
@@ -502,36 +554,89 @@ class UserSigner(BaseUserWorker):
             await self.send_message(chat_id, text, delete_after)
 
     async def on_message(self, client, message: Message):
+        await self._on_message(client, message)
+
+    async def _on_message(self, client: Client, message: Message):
         logger.info(
-            f"收到消息来自「{message.from_user.username or message.from_user.id}」的消息: {readable_message(message)}"
+            f"收到来自「{message.from_user.username or message.from_user.id}」的消息: {readable_message(message)}"
         )
-        chat = self.config.get_chat(message.chat.id)
-        if not chat:
+        chats = self.context["sign_chats"].get(message.chat.id)
+        if not chats:
             logger.warning("忽略意料之外的聊天")
             return
+        # 依次尝试匹配。同一个chat可能配置多个签到，但是没办法保持对方的回复按序到达
+        for chat in chats:
+            ok = await self.handle_one_chat(chat, client, message)
+            if ok:
+                self.context["waiting_counter"].sub(message.chat.id)
+                break
+
+    async def handle_one_chat(
+        self, chat: SignChat, client: Client, message: Message
+    ) -> Optional[bool]:
         if not chat.has_keyboard:
-            logger.info("未配置需要点击的按钮的文本")
-            return
+            logger.info("忽略，未显式配置需要点击按钮的选项")
+            return False
         text_of_btn_to_click = chat.text_of_btn_to_click
         if reply_markup := message.reply_markup:
             if isinstance(reply_markup, InlineKeyboardMarkup):
+                clicked = False
                 flat_buttons = (b for row in reply_markup.inline_keyboard for b in row)
-                for btn in flat_buttons:
-                    if text_of_btn_to_click in btn.text:
-                        logger.info(f"点击按钮: {btn.text}")
-                        try:
-                            await client.request_callback_answer(
-                                message.chat.id,
-                                message.id,
-                                callback_data=btn.callback_data,
+                option_to_btn: dict[str, InlineKeyboardButton] = {}
+                if not text_of_btn_to_click:
+                    option_to_btn = {btn.text: btn for btn in flat_buttons if btn.text}
+                else:
+                    # 遍历button并根据配置的按钮文本匹配
+                    for btn in flat_buttons:
+                        option_to_btn[btn.text] = btn
+                        if text_of_btn_to_click in btn.text:
+                            logger.info(f"点击按钮: {btn.text}")
+                            clicked = True
+                            await self.request_callback_answer(
+                                client, message.chat.id, message.id, btn.callback_data
                             )
-                            logger.info("点击完成")
-                        except (errors.BadRequest, TimeoutError) as e:
-                            logger.error("点击失败")
-                            logger.error(e)
-                        self.context["waiting_click_chats"].discard(chat.chat_id)
-                        return
-                logger.warning("未匹配到需要点击的按钮")
+                            break
+                    if clicked:
+                        return True
+                if message.photo is not None and chat.choose_option_by_image:
+                    logger.info("检测到图片，尝试调用大模型进行图片")
+                    ai_client = get_openai_client()
+                    if not ai_client:
+                        logger.warning("未配置OpenAI API Key，无法使用AI服务")
+                        return False
+                    image_buffer: BinaryIO = await client.download_media(
+                        message.photo.file_id, in_memory=True
+                    )
+                    image_buffer.seek(0)
+                    image_bytes = image_buffer.read()
+                    result = await choose_option_by_image(
+                        image_bytes, "选择正确的选项", list(option_to_btn)
+                    )
+                    logger.info(f"选择结果为: {result}")
+                    target_btn = option_to_btn.get(result.strip())
+                    if not target_btn:
+                        logger.warning("未找到匹配的按钮")
+                        return False
+                    await self.request_callback_answer(
+                        client, message.chat.id, message.id, target_btn.callback_data
+                    )
+                    return True
+
+    async def request_callback_answer(
+        self,
+        client: Client,
+        chat_id: Union[int, str],
+        message_id: int,
+        callback_data: Union[str, bytes],
+        **kwargs,
+    ):
+        try:
+            await client.request_callback_answer(
+                chat_id, message_id, callback_data=callback_data, **kwargs
+            )
+            logger.info("点击完成")
+        except (errors.BadRequest, TimeoutError) as e:
+            logger.error(e)
 
 
 class UserMonitor(BaseUserWorker):
@@ -542,13 +647,13 @@ class UserMonitor(BaseUserWorker):
 
     def ask_for_config(self) -> "MonitorConfig":
         i = 1
-        print(f"开始配置任务<{self.task_name}>")
-        print(
+        print_to_user(f"开始配置任务<{self.task_name}>")
+        print_to_user(
             "聊天chat id和用户user id均同时支持整数id和字符串username, username必须以@开头，如@neo"
         )
         match_cfgs = []
         while True:
-            print(f"\n配置第{i}个监控项")
+            print_to_user(f"\n配置第{i}个监控项")
             chat_id = (input("1. Chat ID（登录时最近对话输出中的ID）: ")).strip()
             if not chat_id.startswith("@"):
                 chat_id = int(chat_id)
@@ -558,7 +663,7 @@ class UserMonitor(BaseUserWorker):
             ):
                 if rule in rules:
                     break
-                print("不存在的规则, 请重新输入!")
+                print_to_user("不存在的规则, 请重新输入!")
             while not (rule_value := input("3. 规则值（不可为空）: ")):
                 continue
             from_user_ids = (
@@ -578,7 +683,7 @@ class UserMonitor(BaseUserWorker):
             ):
                 if default_send_text:
                     break
-                print("「默认发送文本」为空时必须填写提取发送文本的正则表达式")
+                print_to_user("「默认发送文本」为空时必须填写提取发送文本的正则表达式")
                 continue
 
             delete_after = (
@@ -635,6 +740,6 @@ class UserMonitor(BaseUserWorker):
             await idle()
 
     def list_(self):
-        print("已配置的任务：")
+        print_to_user("已配置的任务：")
         for d in self.get_task_list():
-            print(d)
+            print_to_user(d)
