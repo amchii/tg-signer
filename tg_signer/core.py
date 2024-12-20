@@ -422,7 +422,9 @@ class UserSigner(BaseUserWorker):
             text_of_btn_to_click = None
             choose_option_by_image_ = False
             if has_keyboard.strip().lower() == "y":
-                text_of_btn_to_click = input("5. 键盘中需要点击的按钮文本: ").strip()
+                text_of_btn_to_click = input(
+                    "5. 键盘中需要点击的按钮文本（无则直接回车）: "
+                ).strip()
                 choose_option_by_image_input = input(
                     "6. 是否需要通过图片识别选择选项？(y/N)："
                 )
