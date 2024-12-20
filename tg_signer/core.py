@@ -40,6 +40,16 @@ logger = logging.getLogger("tg-signer")
 print_to_user = print
 
 
+class UserInput:
+    def __init__(self, index: int = 1):
+        self.index = index
+
+    def __call__(self, prompt: str = None):
+        r = input(f"{self.index}. {prompt}")
+        self.index += 1
+        return r
+
+
 def readable_message(message: Message):
     s = "\nMessage: "
     s += f"\n  text: {message.text or ''}"
@@ -408,25 +418,26 @@ class UserSigner(BaseUserWorker):
         print_to_user(f"开始配置任务<{self.task_name}>")
         while True:
             print_to_user(f"第{i}个签到")
-            chat_id = int(input("1. Chat ID（登录时最近对话输出中的ID）: "))
-            sign_text = input("2. 签到文本（如 /sign）: ") or "/sign"
+            input_ = UserInput()
+            chat_id = int(input_("Chat ID（登录时最近对话输出中的ID）: "))
+            sign_text = input_("签到文本（如 /sign）: ") or "/sign"
             delete_after = (
-                input(
-                    "3. 等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
+                input_(
+                    "等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
                 )
                 or None
             )
             if delete_after:
                 delete_after = int(delete_after)
-            has_keyboard = input("4. 是否有键盘？(y/N)：")
+            has_keyboard = input_("是否有键盘？(y/N)：")
             text_of_btn_to_click = None
             choose_option_by_image_ = False
             if has_keyboard.strip().lower() == "y":
-                text_of_btn_to_click = input(
-                    "5. 键盘中需要点击的按钮文本（无则直接回车）: "
+                text_of_btn_to_click = input_(
+                    "键盘中需要点击的按钮文本（无则直接回车）: "
                 ).strip()
-                choose_option_by_image_input = input(
-                    "6. 是否需要通过图片识别选择选项？(y/N)："
+                choose_option_by_image_input = input_(
+                    "是否需要通过图片识别选择选项？(y/N)："
                 )
                 if choose_option_by_image_input.strip().lower() == "y":
                     choose_option_by_image_ = True
@@ -447,10 +458,10 @@ class UserSigner(BaseUserWorker):
             if continue_.strip().lower() != "y":
                 break
             i += 1
-        sign_at_str = input("4. 每日签到时间（如 06:00:00）: ") or "06:00:00"
+        sign_at_str = input("每日签到时间（如 06:00:00）: ") or "06:00:00"
         sign_at_str = sign_at_str.replace("：", ":").strip()
         sign_at = dt_time.fromisoformat(sign_at_str)
-        random_seconds_str = input("5. 签到时间误差随机秒数（默认为0）: ") or "0"
+        random_seconds_str = input("签到时间误差随机秒数（默认为0）: ") or "0"
         random_seconds = int(float(random_seconds_str))
         config = SignConfig.model_validate(
             {
@@ -623,6 +634,10 @@ class UserSigner(BaseUserWorker):
                         client, message.chat.id, message.id, target_btn.callback_data
                     )
                     return True
+            else:
+                logger.warning(f"忽略类型: {type(reply_markup)}")
+        else:
+            logger.warning("未检测到按钮")
 
     async def request_callback_answer(
         self,
