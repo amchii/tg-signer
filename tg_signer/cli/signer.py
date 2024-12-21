@@ -265,8 +265,8 @@ def reconfig(obj, task_name):
 @click.argument("query", nargs=1, default="")
 @click.option(
     "--limit",
-    "limit",
     "-l",
+    "limit",
     default=10,
     type=int,
 )
@@ -282,3 +282,41 @@ def list_members(obj, chat_id: str, query: str, admin, limit):
         except ValueError:
             raise click.UsageError("chat_id为username时必须以@开头")
     signer.app_run(signer.list_members(chat_id, query, admin=admin, limit=limit))
+
+
+@tg_signer.command(
+    help="""导出配置，默认为输出到终端。\n\n e.g.\n\n  tg-signer export -O config.json mytask\n\n  tg-signer export mytask > config.json"""
+)
+@click.argument("task_name")
+@click.option(
+    "--file", "-O", "file", type=click.Path(), default=None, help="导出至该文件"
+)
+@click.pass_obj
+def export(obj, task_name: str, file: str = None):
+    signer = get_signer(task_name, obj)
+    data = signer.export()
+    if not file:
+        click.echo(data)
+    else:
+        with click.open_file(file, "w", encoding="utf-8") as fp:
+            fp.write(data)
+
+
+@tg_signer.command(
+    name="import",
+    help="""导入配置，默认为从终端读取。\n\n e.g.\n\n  tg-signer import -I config.json mytask\n\n  cat config.json | tg-signer import mytask""",
+)
+@click.argument("task_name")
+@click.option(
+    "--file", "-I", "file", type=click.Path(), default=None, help="导入该文件"
+)
+@click.pass_obj
+def import_(obj, task_name: str, file: str = None):
+    signer = get_signer(task_name, obj)
+    if not file:
+        stdin_text = click.get_text_stream("stdin")
+        data = stdin_text.read()
+    else:
+        with click.open_file(file, "r", encoding="utf-8") as fp:
+            data = fp.read()
+    signer.import_(data)

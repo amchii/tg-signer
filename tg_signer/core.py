@@ -256,6 +256,11 @@ class BaseUserWorker:
                 signs.append(d)
         return signs
 
+    def list_(self):
+        print_to_user("已配置的任务：")
+        for d in self.get_task_list():
+            print_to_user(d)
+
     def get_me(self):
         file = self.workdir.joinpath("me.json")
         if file.is_file():
@@ -364,6 +369,18 @@ class BaseUserWorker:
                     )
                 )
 
+    def export(self):
+        with open(self.config_file, "r", encoding="utf-8") as fp:
+            data = fp.read()
+        return data
+
+    def import_(self, config_str: str):
+        with open(self.config_file, "w", encoding="utf-8") as fp:
+            fp.write(config_str)
+
+    def ask_one(self):
+        raise NotImplementedError
+
 
 class WaitCounter:
     def __init__(self):
@@ -412,48 +429,56 @@ class UserSigner(BaseUserWorker):
     def sign_record_file(self):
         return self.task_dir.joinpath("sign_record.json")
 
+    def ask_one(self) -> SignChat:
+        input_ = UserInput()
+        chat_id = int(input_("Chat ID（登录时最近对话输出中的ID）: "))
+        sign_text = input_("签到文本（如 /sign）: ") or "/sign"
+        delete_after = (
+            input_(
+                "等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
+            )
+            or None
+        )
+        if delete_after:
+            delete_after = int(delete_after)
+        has_keyboard = input_("是否有键盘？(y/N)：")
+        text_of_btn_to_click = None
+        choose_option_by_image_ = False
+        if has_keyboard.strip().lower() == "y":
+            text_of_btn_to_click = input_(
+                "键盘中需要点击的按钮文本（无则直接回车）: "
+            ).strip()
+            choose_option_by_image_input = input_(
+                "是否需要通过图片识别选择选项？(y/N)："
+            )
+            if choose_option_by_image_input.strip().lower() == "y":
+                choose_option_by_image_ = True
+                print_to_user(
+                    "在运行前请通过环境变量正确设置`OPENAI_API_KEY`, `OPENAI_BASE_URL`。"
+                    '默认模型为"gpt-4o", 可通过环境变量`OPENAI_MODEL`更改。'
+                )
+        return SignChat.model_validate(
+            {
+                "chat_id": chat_id,
+                "sign_text": sign_text,
+                "delete_after": delete_after,
+                "text_of_btn_to_click": text_of_btn_to_click,
+                "choose_option_by_image": choose_option_by_image_,
+            }
+        )
+
     def ask_for_config(self) -> "SignConfig":
         chats = []
         i = 1
         print_to_user(f"开始配置任务<{self.task_name}>")
         while True:
             print_to_user(f"第{i}个签到")
-            input_ = UserInput()
-            chat_id = int(input_("Chat ID（登录时最近对话输出中的ID）: "))
-            sign_text = input_("签到文本（如 /sign）: ") or "/sign"
-            delete_after = (
-                input_(
-                    "等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
-                )
-                or None
-            )
-            if delete_after:
-                delete_after = int(delete_after)
-            has_keyboard = input_("是否有键盘？(y/N)：")
-            text_of_btn_to_click = None
-            choose_option_by_image_ = False
-            if has_keyboard.strip().lower() == "y":
-                text_of_btn_to_click = input_(
-                    "键盘中需要点击的按钮文本（无则直接回车）: "
-                ).strip()
-                choose_option_by_image_input = input_(
-                    "是否需要通过图片识别选择选项？(y/N)："
-                )
-                if choose_option_by_image_input.strip().lower() == "y":
-                    choose_option_by_image_ = True
-                    print_to_user(
-                        "在运行前请通过环境变量正确设置`OPENAI_API_KEY`, `OPENAI_BASE_URL`。"
-                        '默认模型为"gpt-4o", 可通过环境变量`OPENAI_MODEL`更改。'
-                    )
-            chats.append(
-                {
-                    "chat_id": chat_id,
-                    "sign_text": sign_text,
-                    "delete_after": delete_after,
-                    "text_of_btn_to_click": text_of_btn_to_click,
-                    "choose_option_by_image": choose_option_by_image_,
-                }
-            )
+            try:
+                chats.append(self.ask_one())
+            except Exception as e:
+                print_to_user(e)
+                print_to_user("配置失败")
+                i -= 1
             continue_ = input("继续配置签到？(y/N)：")
             if continue_.strip().lower() != "y":
                 break
@@ -481,11 +506,6 @@ class UserSigner(BaseUserWorker):
             with open(self.sign_record_file, "r", encoding="utf-8") as fp:
                 sign_record = json.load(fp)
         return sign_record
-
-    def list_(self):
-        print_to_user("已配置的任务：")
-        for d in self.get_task_list():
-            print_to_user(d)
 
     async def sign(self, chat_id: int, sign_text: str, delete_after: int = None):
         return await self.send_message(chat_id, sign_text, delete_after)
@@ -662,6 +682,57 @@ class UserMonitor(BaseUserWorker):
     cfg_cls = MonitorConfig
     config: MonitorConfig
 
+    def ask_one(self):
+        chat_id = (input("1. Chat ID（登录时最近对话输出中的ID）: ")).strip()
+        if not chat_id.startswith("@"):
+            chat_id = int(chat_id)
+        rules = ["exact", "contains", "regex"]
+        while rule := input("2. 匹配规则('exact', 'contains', 'regex'): ") or "exact":
+            if rule in rules:
+                break
+            print_to_user("不存在的规则, 请重新输入!")
+        while not (rule_value := input("3. 规则值（不可为空）: ")):
+            continue
+        from_user_ids = (
+            input(
+                "4. 只匹配来自特定用户ID的消息（多个用逗号隔开, 匹配所有用户直接回车）: "
+            )
+            or None
+        )
+        if from_user_ids:
+            from_user_ids = [
+                i if i.startswith("@") else int(i) for i in from_user_ids.split(",")
+            ]
+        default_send_text = input("5. 默认发送文本: ") or None
+        while not (
+            send_text_search_regex := input("6. 从消息中提取发送文本的正则表达式: ")
+            or None
+        ):
+            if default_send_text:
+                break
+            print_to_user("「默认发送文本」为空时必须填写提取发送文本的正则表达式")
+            continue
+
+        delete_after = (
+            input(
+                "7. 等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
+            )
+            or None
+        )
+        if delete_after:
+            delete_after = int(delete_after)
+        return MatchConfig.model_validate(
+            {
+                "chat_id": chat_id,
+                "rule": rule,
+                "rule_value": rule_value,
+                "from_user_ids": from_user_ids,
+                "default_send_text": default_send_text,
+                "send_text_search_regex": send_text_search_regex,
+                "delete_after": delete_after,
+            }
+        )
+
     def ask_for_config(self) -> "MonitorConfig":
         i = 1
         print_to_user(f"开始配置任务<{self.task_name}>")
@@ -671,58 +742,12 @@ class UserMonitor(BaseUserWorker):
         match_cfgs = []
         while True:
             print_to_user(f"\n配置第{i}个监控项")
-            chat_id = (input("1. Chat ID（登录时最近对话输出中的ID）: ")).strip()
-            if not chat_id.startswith("@"):
-                chat_id = int(chat_id)
-            rules = ["exact", "contains", "regex"]
-            while (
-                rule := input("2. 匹配规则('exact', 'contains', 'regex'): ") or "exact"
-            ):
-                if rule in rules:
-                    break
-                print_to_user("不存在的规则, 请重新输入!")
-            while not (rule_value := input("3. 规则值（不可为空）: ")):
-                continue
-            from_user_ids = (
-                input(
-                    "4. 只匹配来自特定用户ID的消息（多个用逗号隔开, 匹配所有用户直接回车）: "
-                )
-                or None
-            )
-            if from_user_ids:
-                from_user_ids = [
-                    i if i.startswith("@") else int(i) for i in from_user_ids.split(",")
-                ]
-            default_send_text = input("5. 默认发送文本: ") or None
-            while not (
-                send_text_search_regex := input("6. 从消息中提取发送文本的正则表达式: ")
-                or None
-            ):
-                if default_send_text:
-                    break
-                print_to_user("「默认发送文本」为空时必须填写提取发送文本的正则表达式")
-                continue
-
-            delete_after = (
-                input(
-                    "7. 等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
-                )
-                or None
-            )
-            if delete_after:
-                delete_after = int(delete_after)
-            match_cfg = MatchConfig.model_validate(
-                {
-                    "chat_id": chat_id,
-                    "rule": rule,
-                    "rule_value": rule_value,
-                    "from_user_ids": from_user_ids,
-                    "default_send_text": default_send_text,
-                    "send_text_search_regex": send_text_search_regex,
-                    "delete_after": delete_after,
-                }
-            )
-            match_cfgs.append(match_cfg)
+            try:
+                match_cfgs.append(self.ask_one())
+            except Exception as e:
+                print_to_user(e)
+                print_to_user("配置失败")
+                i -= 1
             continue_ = input("继续配置？(y/N)：")
             if continue_.strip().lower() != "y":
                 break
@@ -755,8 +780,3 @@ class UserMonitor(BaseUserWorker):
         async with self.app:
             logger.info("开始监控...")
             await idle()
-
-    def list_(self):
-        print_to_user("已配置的任务：")
-        for d in self.get_task_list():
-            print_to_user(d)

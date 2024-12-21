@@ -62,6 +62,8 @@ Options:
   --help                          Show this message and exit.
 
 Commands:
+  export        导出配置，默认为输出到终端。
+  import        导入配置，默认为从终端读取。
   list          列出已有配置
   list-members  查询聊天（群或频道）的成员, 频道需要管理员权限
   login         登录账号（用于获取session）

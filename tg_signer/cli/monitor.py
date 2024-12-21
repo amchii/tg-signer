@@ -67,3 +67,41 @@ def run(obj, task_name, num_of_dialogs):
 def reconfig(obj, task_name):
     signer = UserMonitor(task_name=task_name, workdir=obj["workdir"])
     return signer.reconfig()
+
+
+@tg_monitor.command(
+    help="""导出配置，默认为输出到终端。\n\n e.g.\n\n  tg-monitor export -O config.json mytask\n\n  tg-monitor export mytask > config.json"""
+)
+@click.argument("task_name")
+@click.option(
+    "--file", "-O", "file", type=click.Path(), default=None, help="导出至该文件"
+)
+@click.pass_obj
+def export(obj, task_name: str, file: str = None):
+    monitor = get_monitor(task_name, obj)
+    data = monitor.export()
+    if not file:
+        click.echo(data)
+    else:
+        with click.open_file(file, "w", encoding="utf-8") as fp:
+            fp.write(data)
+
+
+@tg_monitor.command(
+    name="import",
+    help="""导入配置，默认为从终端读取。\n\n e.g.\n\n  tg-monitor import -I config.json mytask\n\n  cat config.json | tg-monitor import mytask""",
+)
+@click.argument("task_name")
+@click.option(
+    "--file", "-I", "file", type=click.Path(), default=None, help="导入该文件"
+)
+@click.pass_obj
+def import_(obj, task_name: str, file: str = None):
+    monitor = get_monitor(task_name, obj)
+    if not file:
+        stdin_text = click.get_text_stream("stdin")
+        data = stdin_text.read()
+    else:
+        with click.open_file(file, "r", encoding="utf-8") as fp:
+            data = fp.read()
+    monitor.import_(data)
