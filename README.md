@@ -221,6 +221,10 @@ tg-signer monitor run my_monitor
 
 ### 版本变动日志
 
+#### 0.5.1
+
+- 添加`import`和`export`命令用于导入导出配置
+
 #### 0.5.0
 
 - 根据配置的文本点击键盘
