@@ -160,7 +160,7 @@ tg-signer monitor run my_monitor
 
 配置第1个监控项
 1. Chat ID（登录时最近对话输出中的ID）: -4573702599
-2. 匹配规则('exact', 'contains', 'regex'): contains
+2. 匹配规则('exact', 'contains', 'regex', 'all'): contains
 3. 规则值（不可为空）: kfc
 4. 只匹配来自特定用户ID的消息（多个用逗号隔开, 匹配所有用户直接回车）: @neo
 5. 默认发送文本: V Me 50

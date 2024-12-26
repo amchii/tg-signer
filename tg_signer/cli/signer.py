@@ -1,3 +1,5 @@
+import logging
+
 import click
 from click import Context, HelpFormatter
 
@@ -243,6 +245,7 @@ def run_once(obj, task_name, num_of_dialogs):
 @click.pass_obj
 def send_text(obj, chat_id, text, delete_after=None):
     singer = get_signer(None, obj)
+    click.echo("将发送单次消息")
     singer.app_run(singer.send_text(chat_id, text, delete_after))
 
 
@@ -320,3 +323,54 @@ def import_(obj, task_name: str, file: str = None):
         with click.open_file(file, "r", encoding="utf-8") as fp:
             data = fp.read()
     signer.import_(data)
+
+
+@tg_signer.command(help="批量配置Telegram自带的定时发送消息功能")
+@click.argument(
+    "chat_id",
+    type=int,
+)
+@click.argument("text")
+@click.option(
+    "--crontab",
+    "-C",
+    "crontab",
+    type=str,
+    required=True,
+    help=" `crontab`语法, 如'0 0 * * *'表示每天0点发送.",
+)
+@click.option(
+    "--next-times",
+    "-N",
+    "next_times",
+    type=int,
+    default=1,
+    show_default=True,
+    help="配置定时发送消息时的次数，如通过crontab配置了'每天0点发送消息'，则'30'表示将定时任务排30次，即未来30天每天0点发送消息",
+)
+@click.option(
+    "--random-seconds",
+    "-RS",
+    "random_seconds",
+    type=int,
+    default=0,
+    show_default=True,
+    help="加入随机秒数，会应用于每个定时消息",
+)
+@click.pass_obj
+def schedule_messages(obj, chat_id, text, crontab, next_times, random_seconds):
+    signer = get_signer(None, obj)
+    signer.app_run(
+        signer.schedule_messages(chat_id, text, crontab, next_times, random_seconds)
+    )
+
+
+@tg_signer.command(help="显示已配置的定时消息")
+@click.argument("chat_id", type=int)
+@click.pass_obj
+def list_schedule_messages(obj, chat_id):
+    logging.root.setLevel(
+        level=logging.WARNING,
+    )
+    signer = get_signer(None, obj)
+    signer.app_run(signer.get_schedule_messages(chat_id))

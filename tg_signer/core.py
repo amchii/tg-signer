@@ -11,6 +11,7 @@ from datetime import time as dt_time
 from typing import BinaryIO, Optional, Type, TypedDict, TypeVar, Union
 from urllib import parse
 
+from croniter import croniter
 from pyrogram import Client as BaseClient
 from pyrogram import errors, filters
 from pyrogram.enums import ChatMembersFilter
@@ -580,11 +581,13 @@ class UserSigner(BaseUserWorker):
     async def run_once(self, num_of_dialogs):
         return await self.run(num_of_dialogs, only_once=True, force_rerun=True)
 
-    async def send_text(self, chat_id: int, text: str, delete_after: int = None):
+    async def send_text(
+        self, chat_id: int, text: str, delete_after: int = None, **kwargs
+    ):
         if self.user is None:
             await self.login(print_chat=False)
         async with self.app:
-            await self.send_message(chat_id, text, delete_after)
+            await self.send_message(chat_id, text, delete_after, **kwargs)
 
     async def on_message(self, client, message: Message):
         await self._on_message(client, message)
@@ -677,6 +680,43 @@ class UserSigner(BaseUserWorker):
             logger.info("点击完成")
         except (errors.BadRequest, TimeoutError) as e:
             logger.error(e)
+
+    async def schedule_messages(
+        self,
+        chat_id: int | str,
+        text: str,
+        crontab: str = None,
+        next_times: int = 1,
+        random_seconds: int = 0,
+    ):
+        now = get_now()
+        it = croniter(crontab, start_time=now)
+        if self.user is None:
+            await self.login(print_chat=False)
+        results = []
+        async with self.app:
+            for n in range(next_times):
+                next_dt: datetime = it.next(ret_type=datetime) + timedelta(
+                    seconds=random.randint(0, random_seconds)
+                )
+                results.append({"at": next_dt.isoformat(), "text": text})
+                await self.app.send_message(
+                    chat_id,
+                    text,
+                    schedule_date=next_dt,
+                )
+                await asyncio.sleep(0.1)
+                print_to_user(f"已配置次数：{n + 1}")
+        logger.info(f"已配置定时发送消息，次数{next_times}")
+        return results
+
+    async def get_schedule_messages(self, chat_id):
+        if self.user is None:
+            await self.login(print_chat=False)
+        async with self.app:
+            messages = await self.app.get_scheduled_messages(chat_id)
+            for message in messages:
+                print_to_user(f"{message.date}: {message.text}")
 
 
 class UserMonitor(BaseUserWorker):
