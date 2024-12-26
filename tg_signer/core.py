@@ -33,7 +33,7 @@ from tg_signer.config import (
     SignConfig,
 )
 
-from .ai_tools import choose_option_by_image, get_openai_client
+from .ai_tools import choose_option_by_image, get_openai_client, get_reply
 
 logger = logging.getLogger("tg-signer")
 
@@ -416,6 +416,9 @@ class UserSignerWorkerContext(TypedDict, total=False):
     sign_chats: dict[int, list[SignChat]]
 
 
+OPENAI_USE_PROMPT = '在运行前请通过环境变量正确设置`OPENAI_API_KEY`, `OPENAI_BASE_URL`。默认模型为"gpt-4o", 可通过环境变量`OPENAI_MODEL`更改。'
+
+
 class UserSigner(BaseUserWorker):
     _workdir = ".signer"
     _tasks_dir = "signs"
@@ -453,10 +456,7 @@ class UserSigner(BaseUserWorker):
             )
             if choose_option_by_image_input.strip().lower() == "y":
                 choose_option_by_image_ = True
-                print_to_user(
-                    "在运行前请通过环境变量正确设置`OPENAI_API_KEY`, `OPENAI_BASE_URL`。"
-                    '默认模型为"gpt-4o", 可通过环境变量`OPENAI_MODEL`更改。'
-                )
+                print_to_user(OPENAI_USE_PROMPT)
         return SignChat.model_validate(
             {
                 "chat_id": chat_id,
@@ -643,7 +643,10 @@ class UserSigner(BaseUserWorker):
                     image_buffer.seek(0)
                     image_bytes = image_buffer.read()
                     result = await choose_option_by_image(
-                        image_bytes, "选择正确的选项", list(option_to_btn)
+                        image_bytes,
+                        "选择正确的选项",
+                        list(option_to_btn),
+                        client=ai_client,
                     )
                     logger.info(f"选择结果为: {result}")
                     target_btn = option_to_btn.get(result.strip())
@@ -683,19 +686,23 @@ class UserMonitor(BaseUserWorker):
     config: MonitorConfig
 
     def ask_one(self):
-        chat_id = (input("1. Chat ID（登录时最近对话输出中的ID）: ")).strip()
+        input_ = UserInput()
+        chat_id = (input_("Chat ID（登录时最近对话输出中的ID）: ")).strip()
         if not chat_id.startswith("@"):
             chat_id = int(chat_id)
-        rules = ["exact", "contains", "regex"]
-        while rule := input("2. 匹配规则('exact', 'contains', 'regex'): ") or "exact":
+        rules = ["exact", "contains", "regex", "all"]
+        while rule := input_(f"匹配规则({', '.join(rules)}): ") or "exact":
             if rule in rules:
                 break
             print_to_user("不存在的规则, 请重新输入!")
-        while not (rule_value := input("3. 规则值（不可为空）: ")):
-            continue
+        rule_value = None
+        if rule != "all":
+            while not (rule_value := input_("规则值（不可为空）: ")):
+                print_to_user("不可为空！")
+                continue
         from_user_ids = (
-            input(
-                "4. 只匹配来自特定用户ID的消息（多个用逗号隔开, 匹配所有用户直接回车）: "
+            input_(
+                "只匹配来自特定用户ID的消息（多个用逗号隔开, 匹配所有用户直接回车）: "
             )
             or None
         )
@@ -703,19 +710,26 @@ class UserMonitor(BaseUserWorker):
             from_user_ids = [
                 i if i.startswith("@") else int(i) for i in from_user_ids.split(",")
             ]
-        default_send_text = input("5. 默认发送文本: ") or None
-        while not (
-            send_text_search_regex := input("6. 从消息中提取发送文本的正则表达式: ")
-            or None
-        ):
-            if default_send_text:
-                break
-            print_to_user("「默认发送文本」为空时必须填写提取发送文本的正则表达式")
-            continue
+        default_send_text = input_("默认发送文本: ") or None
+        ai_reply = False
+        ai_prompt = None
+        use_ai_reply = input_("是否使用AI进行回复(y/N): ") or "n"
+        if use_ai_reply.lower() == "y":
+            ai_reply = True
+            while not (ai_prompt := input_("输入你的提示词（作为`system prompt`）: ")):
+                print_to_user("不可为空！")
+                continue
+            print_to_user(OPENAI_USE_PROMPT)
+
+        send_text_search_regex = None
+        if not ai_reply:
+            send_text_search_regex = (
+                input_("从消息中提取发送文本的正则表达式（不需要则直接回车）: ") or None
+            )
 
         delete_after = (
-            input(
-                "7. 等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
+            input_(
+                "等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
             )
             or None
         )
@@ -728,6 +742,8 @@ class UserMonitor(BaseUserWorker):
                 "rule_value": rule_value,
                 "from_user_ids": from_user_ids,
                 "default_send_text": default_send_text,
+                "ai_reply": ai_reply,
+                "ai_prompt": ai_prompt,
                 "send_text_search_regex": send_text_search_regex,
                 "delete_after": delete_after,
             }
@@ -761,13 +777,28 @@ class UserMonitor(BaseUserWorker):
                 continue
             logger.info(f"匹配到监控项：{match_cfg}")
             try:
-                send_text = match_cfg.get_send_text(message.text)
+                send_text = await self.get_send_text(match_cfg, message)
+                if not send_text:
+                    logger.warning("发送内容为空")
+                    return
                 logger.info(f"发送文本：{send_text}")
                 await self.send_message(
                     chat_id, send_text, delete_after=match_cfg.delete_after
                 )
             except IndexError as e:
                 logger.exception(e)
+
+    async def get_send_text(self, match_cfg: MatchConfig, message: Message) -> str:
+        send_text = match_cfg.get_send_text(message.text)
+        if match_cfg.ai_reply and match_cfg.ai_prompt:
+            ai_client = get_openai_client()
+            if not ai_client:
+                logger.warning("未配置OpenAI API Key，无法使用AI服务")
+                return send_text
+            send_text = await get_reply(
+                match_cfg.ai_prompt, message.text, client=ai_client
+            )
+        return send_text
 
     async def run(self, num_of_dialogs=20):
         if self.user is None:

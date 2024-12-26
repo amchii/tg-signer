@@ -62,3 +62,27 @@ option字段表示你选择的选项。
     message = completion.choices[0].message
     result = json.loads(message.content)
     return result["option"]
+
+
+async def get_reply(
+    prompt: str,
+    query: str,
+    client: AsyncOpenAI = None,
+    default_model="gpt-4o",
+) -> str:
+    model = os.environ.get("OPENAI_MODEL", default_model)
+    client = client or get_openai_client()
+    messages = [
+        {
+            "role": "system",
+            "content": prompt,
+        },
+        {"role": "user", "content": f"{query}"},
+    ]
+    completion = await client.chat.completions.create(
+        messages=messages,
+        model=model,
+        stream=False,
+    )
+    message = completion.choices[0].message
+    return message.content

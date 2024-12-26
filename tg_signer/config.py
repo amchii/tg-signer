@@ -84,17 +84,19 @@ class SignConfigV2(BaseJSONConfig):
 
 SignConfig = SignConfigV2
 
-MatchRuleT: TypeAlias = Literal["exact", "contains", "regex"]
+MatchRuleT: TypeAlias = Literal["exact", "contains", "regex", "all"]
 
 
 class MatchConfig(BaseJSONConfig):
     chat_id: Union[int, str] = None  # 聊天id或username
     rule: MatchRuleT = "exact"  # 匹配规则
-    rule_value: str  # 规则值
+    rule_value: Optional[str] = None  # 规则值
     from_user_ids: Optional[List[Union[int, str]]] = (
         None  # 发送者id或username，为空时，匹配所有人
     )
     default_send_text: Optional[str] = None  # 默认发送内容
+    ai_reply: bool = False  # 是否使用AI回复
+    ai_prompt: Optional[str] = None
     send_text_search_regex: Optional[str] = None  # 用正则表达式从消息中提取发送内容
     delete_after: Optional[int] = None
     ignore_case: bool = True  # 忽略大小写
@@ -137,6 +139,8 @@ class MatchConfig(BaseJSONConfig):
         根据`rule`校验`text`是否匹配
         """
         rule_value = self.rule_value
+        if self.rule == "all":
+            return True
         if self.rule == "exact":
             if self.ignore_case:
                 return rule_value.lower() == text.lower()
@@ -153,7 +157,7 @@ class MatchConfig(BaseJSONConfig):
     def match(self, message: "Message"):
         return bool(self.match_user(message) and self.match_text(message.text))
 
-    def get_send_text(self, text: str):
+    def get_send_text(self, text: str) -> str:
         send_text = self.default_send_text
         if self.send_text_search_regex:
             m = re.search(self.send_text_search_regex, text)
