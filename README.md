@@ -62,18 +62,20 @@ Options:
   --help                          Show this message and exit.
 
 Commands:
-  export        导出配置，默认为输出到终端。
-  import        导入配置，默认为从终端读取。
-  list          列出已有配置
-  list-members  查询聊天（群或频道）的成员, 频道需要管理员权限
-  login         登录账号（用于获取session）
-  logout        登出账号并删除session文件
-  monitor       配置和运行监控
-  reconfig      重新配置
-  run           根据任务配置运行签到
-  run-once      运行一次签到任务，即使该签到任务今日已执行过
-  send-text     发送一次消息, 请确保当前会话已经"见过"该`chat_id`
-  version       Show version
+  export                  导出配置，默认为输出到终端。
+  import                  导入配置，默认为从终端读取。
+  list                    列出已有配置
+  list-members            查询聊天（群或频道）的成员, 频道需要管理员权限
+  list-schedule-messages  显示已配置的定时消息
+  login                   登录账号（用于获取session）
+  logout                  登出账号并删除session文件
+  monitor                 配置和运行监控
+  reconfig                重新配置
+  run                     根据任务配置运行签到
+  run-once                运行一次签到任务，即使该签到任务今日已执行过
+  schedule-messages        批量配置Telegram自带的定时发送消息功能
+  send-text               发送一次消息, 请确保当前会话已经"见过"该`chat_id`
+  version                 Show version
 ```
 
 例如:
@@ -86,6 +88,7 @@ tg-signer send-text 8671234001 /test  # 向chat_id为'8671234001'的聊天发送
 tg-signer send-text -- -10006758812 浇水  # 对于负数需要使用POSIX风格，在短横线'-'前方加上'--'
 tg-signer send-text --delete-after 1 8671234001 /test  # 向chat_id为'8671234001'的聊天发送'/test'文本, 并在1秒后删除发送的消息
 tg-signer list-members --chat_id -1001680975844 --admin  # 列出频道的管理员
+tg-signer schedule-messages --crontab '0 0 * * *' --next-times 10 -- -1001680975844 你好  # 在未来10天的每天0点向'-1001680975844'发送消息
 tg-signer monitor run  # 配置个人、群组、频道消息监控与自动回复
 ```
 
