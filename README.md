@@ -73,7 +73,7 @@ Commands:
   reconfig                重新配置
   run                     根据任务配置运行签到
   run-once                运行一次签到任务，即使该签到任务今日已执行过
-  schedule-messages        批量配置Telegram自带的定时发送消息功能
+  schedule-messages       批量配置Telegram自带的定时发送消息功能
   send-text               发送一次消息, 请确保当前会话已经"见过"该`chat_id`
   version                 Show version
 ```
@@ -223,6 +223,11 @@ tg-signer monitor run my_monitor
 
 
 ### 版本变动日志
+
+#### 0.5.2
+
+- Monitor支持配置AI进行消息回复
+- 增加批量配置「Telegram自带的定时发送消息功能」的功能
 
 #### 0.5.1
 
