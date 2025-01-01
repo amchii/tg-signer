@@ -14,11 +14,12 @@ from urllib import parse
 from croniter import CroniterBadCronError, croniter
 from pyrogram import Client as BaseClient
 from pyrogram import errors, filters
-from pyrogram.enums import ChatMembersFilter
+from pyrogram.enums import ChatMembersFilter, ChatType
 from pyrogram.handlers import MessageHandler
 from pyrogram.methods.utilities.idle import idle
 from pyrogram.storage import MemoryStorage
 from pyrogram.types import (
+    Chat,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
@@ -65,6 +66,23 @@ def readable_message(message: Message):
                 for button in row:
                     s += f"{button.text} | "
     return s
+
+
+def readable_chat(chat: Chat):
+    if chat.type == ChatType.BOT:
+        type_ = "BOT"
+    elif chat.type == ChatType.GROUP:
+        type_ = "群组"
+    elif chat.type == ChatType.SUPERGROUP:
+        type_ = "超级群组"
+    elif chat.type == ChatType.CHANNEL:
+        type_ = "频道"
+    else:
+        type_ = "个人"
+
+    none_or_dash = lambda x: x or "-"  # noqa: E731
+
+    return f"id: {chat.id}, username: {none_or_dash(chat.username)}, title: {none_or_dash(chat.title)}, type: {type_}, name: {none_or_dash(chat.first_name)}"
 
 
 class Client(BaseClient):
@@ -301,7 +319,7 @@ class BaseUserWorker:
                     }
                 )
                 if print_chat:
-                    print_to_user(latest_chats[-1])
+                    print_to_user(readable_chat(chat))
 
             with open(
                 self.workdir.joinpath("latest_chats.json"), "w", encoding="utf-8"
