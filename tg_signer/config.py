@@ -100,6 +100,11 @@ class MatchConfig(BaseJSONConfig):
     send_text_search_regex: Optional[str] = None  # 用正则表达式从消息中提取发送内容
     delete_after: Optional[int] = None
     ignore_case: bool = True  # 忽略大小写
+    forward_to_chat_id: Optional[Union[int, str]] = (
+        None  # 转发消息到该聊天，默认为消息来源
+    )
+    push_via_server_chan: bool = False  # 将消息通过server酱推送
+    server_chan_send_key: Optional[str] = None  # server酱的sendkey
 
     def __str__(self):
         return (

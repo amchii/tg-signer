@@ -35,6 +35,7 @@ from tg_signer.config import (
 )
 
 from .ai_tools import choose_option_by_image, get_openai_client, get_reply
+from .notification.server_chan import sc_send
 
 logger = logging.getLogger("tg-signer")
 
@@ -125,7 +126,7 @@ def get_proxy(proxy: str = None):
 def get_client(
     name: str = "my_account",
     proxy: dict = None,
-    workdir: str | pathlib.Path = ".",
+    workdir: Union[str, pathlib.Path] = ".",
     session_string: str = None,
     in_memory: bool = False,
     **kwargs,
@@ -322,7 +323,7 @@ class BaseUserWorker:
         return await self.app.log_out()
 
     async def send_message(
-        self, chat_id: int | str, text: str, delete_after: int = None, **kwargs
+        self, chat_id: Union[int, str], text: str, delete_after: int = None, **kwargs
     ):
         """
         发送文本消息
@@ -344,7 +345,7 @@ class BaseUserWorker:
         return message
 
     async def search_members(
-        self, chat_id: Union[int | str], query: str, admin=False, limit=10
+        self, chat_id: Union[int, str], query: str, admin=False, limit=10
     ):
         filter_ = ChatMembersFilter.SEARCH
         if admin:
@@ -356,7 +357,7 @@ class BaseUserWorker:
             yield member
 
     async def list_members(
-        self, chat_id: Union[int | str], query: str = "", admin=False, limit=10
+        self, chat_id: Union[int, str], query: str = "", admin=False, limit=10
     ):
         async with self.app:
             async for member in self.search_members(chat_id, query, admin, limit):
@@ -703,7 +704,7 @@ class UserSigner(BaseUserWorker):
 
     async def schedule_messages(
         self,
-        chat_id: int | str,
+        chat_id: Union[int, str],
         text: str,
         crontab: str = None,
         next_times: int = 1,
@@ -795,6 +796,16 @@ class UserMonitor(BaseUserWorker):
         )
         if delete_after:
             delete_after = int(delete_after)
+        forward_to_chat_id = (input_("转发消息到该聊天ID，默认为消息来源：")).strip()
+        if forward_to_chat_id and not forward_to_chat_id.startswith("@"):
+            forward_to_chat_id = int(forward_to_chat_id)
+        push_via_server_chan = (
+            input_("是否通过Server酱推送消息(y/N): ") or "n"
+        ).lower() == "y"
+        server_chan_send_key = (
+            input_("Server酱的SendKey（不填将从环境变量`SERVER_CHAN_SEND_KEY`读取: ")
+            or None
+        )
         return MatchConfig.model_validate(
             {
                 "chat_id": chat_id,
@@ -806,6 +817,9 @@ class UserMonitor(BaseUserWorker):
                 "ai_prompt": ai_prompt,
                 "send_text_search_regex": send_text_search_regex,
                 "delete_after": delete_after,
+                "forward_to_chat_id": forward_to_chat_id,
+                "push_via_server_chan": push_via_server_chan,
+                "server_chan_send_key": server_chan_send_key,
             }
         )
 
@@ -831,7 +845,6 @@ class UserMonitor(BaseUserWorker):
         return MonitorConfig(match_cfgs=match_cfgs)
 
     async def on_message(self, client, message: Message):
-        chat_id = message.chat.id
         for match_cfg in self.config.match_cfgs:
             if not match_cfg.match(message):
                 continue
@@ -840,11 +853,28 @@ class UserMonitor(BaseUserWorker):
                 send_text = await self.get_send_text(match_cfg, message)
                 if not send_text:
                     logger.warning("发送内容为空")
-                    return
-                logger.info(f"发送文本：{send_text}")
-                await self.send_message(
-                    chat_id, send_text, delete_after=match_cfg.delete_after
-                )
+                else:
+                    forward_to_chat_id = match_cfg.forward_to_chat_id or message.chat.id
+                    logger.info(f"发送文本：{send_text}至{forward_to_chat_id}")
+                    await self.send_message(
+                        forward_to_chat_id,
+                        send_text,
+                        delete_after=match_cfg.delete_after,
+                    )
+
+                if match_cfg.push_via_server_chan:
+                    server_chan_send_key = (
+                        match_cfg.server_chan_send_key
+                        or os.environ.get("SERVER_CHAN_SEND_KEY")
+                    )
+                    if not server_chan_send_key:
+                        logger.warning("未配置Server酱的SendKey")
+                    else:
+                        await sc_send(
+                            server_chan_send_key,
+                            f"匹配到监控项：{match_cfg.chat_id}",
+                            f"消息内容为:\n\n{message.text}",
+                        )
             except IndexError as e:
                 logger.exception(e)
 
