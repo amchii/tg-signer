@@ -11,7 +11,7 @@ from datetime import time as dt_time
 from typing import BinaryIO, Optional, Type, TypedDict, TypeVar, Union
 from urllib import parse
 
-from croniter import croniter
+from croniter import CroniterBadCronError, croniter
 from pyrogram import Client as BaseClient
 from pyrogram import errors, filters
 from pyrogram.enums import ChatMembersFilter
@@ -484,9 +484,14 @@ class UserSigner(BaseUserWorker):
             if continue_.strip().lower() != "y":
                 break
             i += 1
-        sign_at_str = input("每日签到时间（如 06:00:00）: ") or "06:00:00"
-        sign_at_str = sign_at_str.replace("：", ":").strip()
-        sign_at = dt_time.fromisoformat(sign_at_str)
+        sign_at_prompt = (
+            "每日签到时间（time或crontab表达式，如'06:00:00'或'0 6 * * *'）: "
+        )
+        sign_at_str = input(sign_at_prompt) or "06:00:00"
+        while not (sign_at := self._validate_sign_at(sign_at_str)):
+            print_to_user("请输入正确的时间格式")
+            sign_at_str = input(sign_at_prompt) or "06:00:00"
+
         random_seconds_str = input("签到时间误差随机秒数（默认为0）: ") or "0"
         random_seconds = int(float(random_seconds_str))
         config = SignConfig.model_validate(
@@ -497,6 +502,25 @@ class UserSigner(BaseUserWorker):
             }
         )
         return config
+
+    @classmethod
+    def _validate_sign_at(cls, sign_at_str: str) -> Optional[str]:
+        sign_at_str = sign_at_str.replace("：", ":").strip()
+
+        try:
+            sign_at = dt_time.fromisoformat(sign_at_str)
+            crontab_expr = cls._time_to_crontab(sign_at)
+        except ValueError:
+            try:
+                croniter(sign_at_str)
+                crontab_expr = sign_at_str
+            except CroniterBadCronError:
+                return None
+        return crontab_expr
+
+    @staticmethod
+    def _time_to_crontab(sign_at: time) -> str:
+        return f"{sign_at.minute} {sign_at.hour} * * *"
 
     def load_sign_record(self):
         sign_record = {}
@@ -519,7 +543,6 @@ class UserSigner(BaseUserWorker):
 
         config = self.load_config(self.cfg_cls)
         sign_record = self.load_sign_record()
-        sign_at = config.sign_at
         chat_ids = [c.chat_id for c in config.chats]
         while True:
             logger.info(f"为以下Chat添加消息回调处理函数：{chat_ids}")
@@ -568,13 +591,10 @@ class UserSigner(BaseUserWorker):
 
             if only_once:
                 break
-
-            next_run = (now + timedelta(days=1)).replace(
-                hour=sign_at.hour,
-                minute=sign_at.minute,
-                second=sign_at.second,
-                microsecond=sign_at.microsecond,
-            ) + timedelta(seconds=random.randint(0, int(config.random_seconds)))
+            cron_it = croniter(self._validate_sign_at(config.sign_at), now)
+            next_run: datetime = cron_it.next(datetime) + timedelta(
+                seconds=random.randint(0, int(config.random_seconds))
+            )
             logger.info(f"下次运行时间: {next_run}")
             await asyncio.sleep((next_run - now).total_seconds())
 

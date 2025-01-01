@@ -9,6 +9,7 @@
 工作目录下添加`start.sh`:
 
 ```
+pip install -U tg-signer
 sleep infinity  # 首次配置时使用，后续注释掉
 # tg-signer run mytasks  # 配置完成后取消注释
 ```

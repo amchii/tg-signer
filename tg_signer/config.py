@@ -78,8 +78,8 @@ class SignConfigV2(BaseJSONConfig):
     is_current: ClassVar = True
 
     chats: List[SignChat]
-    sign_at: time
-    random_seconds: int
+    sign_at: str  # 签到时间，time或crontab表达式
+    random_seconds: int = 0
 
 
 SignConfig = SignConfigV2
