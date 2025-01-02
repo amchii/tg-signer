@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import click
@@ -178,7 +179,7 @@ def list_(obj):
 @click.option(
     "--num-of-dialogs",
     "-n",
-    default=20,
+    default=50,
     show_default=True,
     type=int,
     help="获取最近N个对话, 请确保想要签到的对话在最近N个对话内",
@@ -201,7 +202,7 @@ def logout(obj):
 @click.option(
     "--num-of-dialogs",
     "-n",
-    default=20,
+    default=50,
     show_default=True,
     type=int,
     help="获取最近N个对话, 请确保想要签到的对话在最近N个对话内",
@@ -218,7 +219,7 @@ def run(obj, task_name, num_of_dialogs):
     "--num-of-dialogs",
     "-n",
     "num_of_dialogs",
-    default=20,
+    default=50,
     show_default=True,
     type=int,
     help="获取最近N个对话, 请确保想要签到的对话在最近N个对话内",
@@ -374,3 +375,37 @@ def list_schedule_messages(obj, chat_id):
     )
     signer = get_signer(None, obj)
     signer.app_run(signer.get_schedule_messages(chat_id))
+
+
+@tg_signer.command(name="multi-run", help="使用一套配置同时运行多个账号")
+@click.argument("task_name", nargs=1, default="my_sign")
+@click.option(
+    "--account",
+    "-a",
+    "accounts",
+    required=True,
+    multiple=True,
+    help="多个account，每个account是一个自定义账号名称，对应session文件名为<account>.session",
+)
+@click.option(
+    "--num-of-dialogs",
+    "-n",
+    default=50,
+    show_default=True,
+    type=int,
+    help="获取最近N个对话, 请确保想要签到的对话在最近N个对话内",
+)
+@click.pass_obj
+def multi_run(obj, accounts, task_name, num_of_dialogs):
+    logger = logging.getLogger("tg-signer")
+    logger.info(f"开始使用一套配置({task_name})同时运行多个账号..")
+    coros = []
+    for account in accounts:
+        obj["account"] = account
+        signer = get_signer(
+            task_name,
+            obj,
+        )
+        coros.append(signer.run(num_of_dialogs))
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(asyncio.gather(*coros))

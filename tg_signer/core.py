@@ -205,7 +205,7 @@ class BaseUserWorker:
             session_string=session_string,
             in_memory=in_memory,
         )
-        self.user = None
+        self.user: Optional[User] = None
         self._config = None
         self.context = self.ensure_ctx()
 
@@ -232,6 +232,11 @@ class BaseUserWorker:
         task_dir = self.tasks_dir / self.task_name
         make_dirs(task_dir)
         return task_dir
+
+    def get_user_dir(self, user: User):
+        user_dir = self.workdir / "users" / str(user.id)
+        make_dirs(user_dir)
+        return user_dir
 
     @property
     def config_file(self):
@@ -281,23 +286,11 @@ class BaseUserWorker:
         for d in self.get_task_list():
             print_to_user(d)
 
-    def get_me(self):
-        file = self.workdir.joinpath("me.json")
-        if file.is_file():
-            with open(file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            data.pop("_")
-            user = User(
-                id=data["id"],
-                is_self=True,
-                first_name=data.get("first_name"),
-                last_name=data.get("last_name"),
-            )
-            return user
-
     def set_me(self, user: User):
         self.user = user
-        with open(self.workdir.joinpath("me.json"), "w", encoding="utf-8") as fp:
+        with open(
+            self.get_user_dir(user).joinpath("me.json"), "w", encoding="utf-8"
+        ) as fp:
             fp.write(str(user))
 
     async def login(self, num_of_dialogs=20, print_chat=True):
@@ -322,7 +315,9 @@ class BaseUserWorker:
                     print_to_user(readable_chat(chat))
 
             with open(
-                self.workdir.joinpath("latest_chats.json"), "w", encoding="utf-8"
+                self.get_user_dir(me).joinpath("latest_chats.json"),
+                "w",
+                encoding="utf-8",
             ) as fp:
                 json.dump(
                     latest_chats,
@@ -577,6 +572,7 @@ class UserSigner(BaseUserWorker):
                     if now_date_str not in sign_record or force_rerun:
                         for chat in config.chats:
                             self.context["sign_chats"][chat.chat_id].append(chat)
+                            logger.info(f"发送消息至「{chat.chat_id}」")
                             await self.sign(
                                 chat.chat_id, chat.sign_text, chat.delete_after
                             )
