@@ -224,6 +224,13 @@ tg-signer monitor run my_monitor
 
 ### 版本变动日志
 
+#### 0.6.0
+
+- Signer支持通过crontab定时
+- Monitor匹配规则添加`all`支持所有消息
+- Monitor支持匹配到消息后通过server酱推送
+- Signer新增`multi-run`用于使用一套配置同时运行多个账号
+
 #### 0.5.2
 
 - Monitor支持配置AI进行消息回复
