@@ -70,6 +70,7 @@ Commands:
   login                   登录账号（用于获取session）
   logout                  登出账号并删除session文件
   monitor                 配置和运行监控
+  multi-run               使用一套配置同时运行多个账号
   reconfig                重新配置
   run                     根据任务配置运行签到
   run-once                运行一次签到任务，即使该签到任务今日已执行过
@@ -90,6 +91,7 @@ tg-signer send-text --delete-after 1 8671234001 /test  # 向chat_id为'867123400
 tg-signer list-members --chat_id -1001680975844 --admin  # 列出频道的管理员
 tg-signer schedule-messages --crontab '0 0 * * *' --next-times 10 -- -1001680975844 你好  # 在未来10天的每天0点向'-1001680975844'发送消息
 tg-signer monitor run  # 配置个人、群组、频道消息监控与自动回复
+tg-signer multi-run -a account_a -a account_b same_task  # 使用'same_task'的配置同时运行'account_a'和'account_b'两个账号
 ```
 
 ### 配置代理（如有需要）
