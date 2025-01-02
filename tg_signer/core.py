@@ -250,6 +250,19 @@ class BaseUserWorker:
     def config(self, value):
         self._config = value
 
+    def log(self, msg, level: str = "INFO", **kwargs):
+        msg = f"{self._account}: {msg}"
+        if level.upper() == "INFO":
+            logger.info(msg, **kwargs)
+        elif level.upper() == "WARNING":
+            logger.warning(msg, **kwargs)
+        elif level.upper() == "ERROR":
+            logger.error(msg, **kwargs)
+        elif level.upper() == "CRITICAL":
+            logger.critical(msg, **kwargs)
+        else:
+            logger.debug(msg, **kwargs)
+
     def ask_for_config(self):
         raise NotImplementedError
 
@@ -348,13 +361,13 @@ class BaseUserWorker:
         """
         message = await self.app.send_message(chat_id, text, **kwargs)
         if delete_after is not None:
-            logger.info(
+            self.log(
                 f"Message「{text}」 to {chat_id} will be deleted after {delete_after} seconds."
             )
-            logger.info("Waiting...")
+            self.log("Waiting...")
             await asyncio.sleep(delete_after)
             await message.delete()
-            logger.info(f"Message「{text}」 to {chat_id} deleted!")
+            self.log(f"Message「{text}」 to {chat_id} deleted!")
         return message
 
     async def search_members(
@@ -559,20 +572,20 @@ class UserSigner(BaseUserWorker):
         sign_record = self.load_sign_record()
         chat_ids = [c.chat_id for c in config.chats]
         while True:
-            logger.info(f"为以下Chat添加消息回调处理函数：{chat_ids}")
+            self.log(f"为以下Chat添加消息回调处理函数：{chat_ids}")
             self.app.add_handler(
                 MessageHandler(self.on_message, filters.chat(chat_ids))
             )
             try:
                 async with self.app:
                     now = get_now()
-                    logger.info(f"当前时间: {now}")
+                    self.log(f"当前时间: {now}")
                     now_date_str = str(now.date())
                     self.context["waiting_counter"].clear()
                     if now_date_str not in sign_record or force_rerun:
                         for chat in config.chats:
                             self.context["sign_chats"][chat.chat_id].append(chat)
-                            logger.info(f"发送消息至「{chat.chat_id}」")
+                            self.log(f"发送消息至「{chat.chat_id}」")
                             await self.sign(
                                 chat.chat_id, chat.sign_text, chat.delete_after
                             )
@@ -584,15 +597,13 @@ class UserSigner(BaseUserWorker):
                             json.dump(sign_record, fp)
 
                         wait_seconds = 300
-                        logger.info(
-                            f"最多等待{wait_seconds}秒，用于响应可能的键盘点击..."
-                        )
+                        self.log(f"最多等待{wait_seconds}秒，用于响应可能的键盘点击...")
                         _start = time.perf_counter()
                         while (time.perf_counter() - _start) <= wait_seconds and bool(
                             self.context["waiting_counter"]
                         ):
                             await asyncio.sleep(1)
-                        logger.info("Done")
+                        self.log("Done")
 
                     else:
                         print_to_user(
@@ -610,7 +621,7 @@ class UserSigner(BaseUserWorker):
             next_run: datetime = cron_it.next(datetime) + timedelta(
                 seconds=random.randint(0, int(config.random_seconds))
             )
-            logger.info(f"下次运行时间: {next_run}")
+            self.log(f"下次运行时间: {next_run}")
             await asyncio.sleep((next_run - now).total_seconds())
 
     async def run_once(self, num_of_dialogs):
@@ -628,12 +639,12 @@ class UserSigner(BaseUserWorker):
         await self._on_message(client, message)
 
     async def _on_message(self, client: Client, message: Message):
-        logger.info(
+        self.log(
             f"收到来自「{message.from_user.username or message.from_user.id}」的消息: {readable_message(message)}"
         )
         chats = self.context["sign_chats"].get(message.chat.id)
         if not chats:
-            logger.warning("忽略意料之外的聊天")
+            self.log("忽略意料之外的聊天", level="WARNING")
             return
         # 依次尝试匹配。同一个chat可能配置多个签到，但是没办法保持对方的回复按序到达
         for chat in chats:
@@ -646,7 +657,7 @@ class UserSigner(BaseUserWorker):
         self, chat: SignChat, client: Client, message: Message
     ) -> Optional[bool]:
         if not chat.has_keyboard:
-            logger.info("忽略，未显式配置需要点击按钮的选项")
+            self.log("忽略，未显式配置需要点击按钮的选项")
             return False
         text_of_btn_to_click = chat.text_of_btn_to_click
         if reply_markup := message.reply_markup:
@@ -661,7 +672,7 @@ class UserSigner(BaseUserWorker):
                     for btn in flat_buttons:
                         option_to_btn[btn.text] = btn
                         if text_of_btn_to_click in btn.text:
-                            logger.info(f"点击按钮: {btn.text}")
+                            self.log(f"点击按钮: {btn.text}")
                             clicked = True
                             await self.request_callback_answer(
                                 client, message.chat.id, message.id, btn.callback_data
@@ -670,10 +681,12 @@ class UserSigner(BaseUserWorker):
                     if clicked:
                         return True
                 if message.photo is not None and chat.choose_option_by_image:
-                    logger.info("检测到图片，尝试调用大模型进行图片")
+                    self.log("检测到图片，尝试调用大模型进行图片")
                     ai_client = get_openai_client()
                     if not ai_client:
-                        logger.warning("未配置OpenAI API Key，无法使用AI服务")
+                        self.log(
+                            "未配置OpenAI API Key，无法使用AI服务", level="WARNING"
+                        )
                         return False
                     image_buffer: BinaryIO = await client.download_media(
                         message.photo.file_id, in_memory=True
@@ -686,19 +699,19 @@ class UserSigner(BaseUserWorker):
                         list(option_to_btn),
                         client=ai_client,
                     )
-                    logger.info(f"选择结果为: {result}")
+                    self.log(f"选择结果为: {result}")
                     target_btn = option_to_btn.get(result.strip())
                     if not target_btn:
-                        logger.warning("未找到匹配的按钮")
+                        self.log("未找到匹配的按钮", level="WARNING")
                         return False
                     await self.request_callback_answer(
                         client, message.chat.id, message.id, target_btn.callback_data
                     )
                     return True
             else:
-                logger.warning(f"忽略类型: {type(reply_markup)}")
+                self.log(f"忽略类型: {type(reply_markup)}", level="WARNING")
         else:
-            logger.warning("未检测到按钮")
+            self.log("未检测到按钮", level="WARNING")
 
     async def request_callback_answer(
         self,
@@ -712,9 +725,9 @@ class UserSigner(BaseUserWorker):
             await client.request_callback_answer(
                 chat_id, message_id, callback_data=callback_data, **kwargs
             )
-            logger.info("点击完成")
+            self.log("点击完成")
         except (errors.BadRequest, TimeoutError) as e:
-            logger.error(e)
+            self.log(e, level="ERROR")
 
     async def schedule_messages(
         self,
@@ -742,7 +755,7 @@ class UserSigner(BaseUserWorker):
                 )
                 await asyncio.sleep(0.1)
                 print_to_user(f"已配置次数：{n + 1}")
-        logger.info(f"已配置定时发送消息，次数{next_times}")
+        self.log(f"已配置定时发送消息，次数{next_times}")
         return results
 
     async def get_schedule_messages(self, chat_id):
@@ -862,14 +875,14 @@ class UserMonitor(BaseUserWorker):
         for match_cfg in self.config.match_cfgs:
             if not match_cfg.match(message):
                 continue
-            logger.info(f"匹配到监控项：{match_cfg}")
+            self.log(f"匹配到监控项：{match_cfg}")
             try:
                 send_text = await self.get_send_text(match_cfg, message)
                 if not send_text:
-                    logger.warning("发送内容为空")
+                    self.log("发送内容为空", level="WARNING")
                 else:
                     forward_to_chat_id = match_cfg.forward_to_chat_id or message.chat.id
-                    logger.info(f"发送文本：{send_text}至{forward_to_chat_id}")
+                    self.log(f"发送文本：{send_text}至{forward_to_chat_id}")
                     await self.send_message(
                         forward_to_chat_id,
                         send_text,
@@ -882,7 +895,7 @@ class UserMonitor(BaseUserWorker):
                         or os.environ.get("SERVER_CHAN_SEND_KEY")
                     )
                     if not server_chan_send_key:
-                        logger.warning("未配置Server酱的SendKey")
+                        self.log("未配置Server酱的SendKey", level="WARNING")
                     else:
                         await sc_send(
                             server_chan_send_key,
@@ -897,7 +910,7 @@ class UserMonitor(BaseUserWorker):
         if match_cfg.ai_reply and match_cfg.ai_prompt:
             ai_client = get_openai_client()
             if not ai_client:
-                logger.warning("未配置OpenAI API Key，无法使用AI服务")
+                self.log("未配置OpenAI API Key，无法使用AI服务", level="WARNING")
                 return send_text
             send_text = await get_reply(
                 match_cfg.ai_prompt, message.text, client=ai_client
@@ -913,5 +926,5 @@ class UserMonitor(BaseUserWorker):
             MessageHandler(self.on_message, filters.text & filters.chat(cfg.chat_ids)),
         )
         async with self.app:
-            logger.info("开始监控...")
+            self.log("开始监控...")
             await idle()
