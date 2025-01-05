@@ -22,14 +22,14 @@ def get_openai_client(
 async def choose_option_by_image(
     image: bytes,
     query: str,
-    options: list[str],
+    options: list[tuple[int, str]],
     client: AsyncOpenAI = None,
     default_model="gpt-4o",
     temperature=0.1,
-) -> str:
-    sys_prompt = """你是一个**图片识别助手**，可以根据提供的图片和问题选择出**唯一正确**的选项，以如下JSON格式输出你的回复：
+) -> int:
+    sys_prompt = """你是一个**图片识别助手**，可以根据提供的图片和问题选择出**唯一正确**的选项，如果你觉得每个都不对，也要给出一个你认为最符合的答案，以如下JSON格式输出你的回复：
 {
-  "option": "option1",
+  "option": 1,  # 整数，表示选项的序号，从0开始。
   "reason": "这么选择的原因，30字以内"
 }
 option字段表示你选择的选项。
@@ -61,7 +61,7 @@ option字段表示你选择的选项。
     )
     message = completion.choices[0].message
     result = json.loads(message.content)
-    return result["option"]
+    return int(result["option"])
 
 
 async def get_reply(

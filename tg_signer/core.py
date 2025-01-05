@@ -636,7 +636,10 @@ class UserSigner(BaseUserWorker):
             await self.send_message(chat_id, text, delete_after, **kwargs)
 
     async def on_message(self, client, message: Message):
-        await self._on_message(client, message)
+        try:
+            await self._on_message(client, message)
+        except Exception as e:
+            logger.exception(e)
 
     async def _on_message(self, client: Client, message: Message):
         self.log(
@@ -679,6 +682,11 @@ class UserSigner(BaseUserWorker):
                             )
                             break
                     if clicked:
+                        if chat.choose_option_by_image:
+                            logger.info(
+                                "该聊天同时配置了点击按钮文本和图片识别选项，将继续等待下一步「图片识别」的消息"
+                            )
+                            self.context["waiting_counter"].add(message.chat.id)
                         return True
                 if message.photo is not None and chat.choose_option_by_image:
                     self.log("检测到图片，尝试调用大模型进行图片")
@@ -693,12 +701,14 @@ class UserSigner(BaseUserWorker):
                     )
                     image_buffer.seek(0)
                     image_bytes = image_buffer.read()
-                    result = await choose_option_by_image(
+                    options = list(option_to_btn)
+                    result_index = await choose_option_by_image(
                         image_bytes,
                         "选择正确的选项",
-                        list(option_to_btn),
+                        list(enumerate(options)),
                         client=ai_client,
                     )
+                    result = options[result_index]
                     self.log(f"选择结果为: {result}")
                     target_btn = option_to_btn.get(result.strip())
                     if not target_btn:
