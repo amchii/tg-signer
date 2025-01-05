@@ -226,6 +226,11 @@ tg-signer monitor run my_monitor
 
 ### 版本变动日志
 
+
+#### 0.6.1
+
+- 支持点击按钮文本后继续进行图片识别
+
 #### 0.6.0
 
 - Signer支持通过crontab定时
