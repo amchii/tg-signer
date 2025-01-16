@@ -586,9 +586,14 @@ class UserSigner(BaseUserWorker):
                         for chat in config.chats:
                             self.context["sign_chats"][chat.chat_id].append(chat)
                             self.log(f"发送消息至「{chat.chat_id}」")
-                            await self.sign(
-                                chat.chat_id, chat.sign_text, chat.delete_after
-                            )
+                            try:
+                                await self.sign(
+                                    chat.chat_id, chat.sign_text, chat.delete_after
+                                )
+                            except errors.BadRequest as e:
+                                self.log(f"发送消息失败：{e}")
+                                continue
+
                             if chat.has_keyboard:
                                 self.context["waiting_counter"].add(chat.chat_id)
                             await asyncio.sleep(0.5)
