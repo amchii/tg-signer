@@ -2,11 +2,11 @@
 #    uv pip compile pyproject.toml -o requirements.txt
 annotated-types==0.7.0
     # via pydantic
-anyio==4.7.0
+anyio==4.8.0
     # via
     #   httpx
     #   openai
-certifi==2024.12.14
+certifi==2025.1.31
     # via
     #   httpcore
     #   httpx
@@ -28,13 +28,13 @@ idna==3.10
     #   httpx
 jiter==0.8.2
     # via openai
-kurirogram==2.1.35
+kurirogram==2.1.38
     # via tg-signer (pyproject.toml)
-openai==1.58.1
+openai==1.62.0
     # via tg-signer (pyproject.toml)
 pyaes==1.6.1
     # via kurirogram
-pydantic==2.10.4
+pydantic==2.10.6
     # via
     #   tg-signer (pyproject.toml)
     #   openai
@@ -44,7 +44,7 @@ pysocks==1.7.1
     # via kurirogram
 python-dateutil==2.9.0.post0
     # via croniter
-pytz==2024.2
+pytz==2025.1
     # via croniter
 six==1.17.0
     # via python-dateutil

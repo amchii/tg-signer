@@ -17,6 +17,7 @@ from pyrogram import errors, filters
 from pyrogram.enums import ChatMembersFilter, ChatType
 from pyrogram.handlers import MessageHandler
 from pyrogram.methods.utilities.idle import idle
+from pyrogram.session import Session as BaseSession
 from pyrogram.storage import MemoryStorage
 from pyrogram.types import (
     Chat,
@@ -41,6 +42,10 @@ from .notification.server_chan import sc_send
 logger = logging.getLogger("tg-signer")
 
 print_to_user = print
+
+
+class Session(BaseSession):
+    START_TIMEOUT = 5
 
 
 class UserInput:
@@ -97,6 +102,37 @@ class Client(BaseClient):
             return await self.start()
         except ConnectionError:
             pass
+
+    async def connect(
+        self: "Client",
+    ) -> bool:
+        """
+        Connect the client to Telegram servers.
+
+        Returns:
+            ``bool``: On success, in case the passed-in session is authorized, True is returned. Otherwise, in case
+            the session needs to be authorized, False is returned.
+
+        Raises:
+            ConnectionError: In case you try to connect an already connected client.
+        """
+        if self.is_connected:
+            raise ConnectionError("Client is already connected")
+
+        await self.load_session()
+
+        self.session = Session(
+            self,
+            await self.storage.dc_id(),
+            await self.storage.auth_key(),
+            await self.storage.test_mode(),
+        )
+
+        await self.session.start()
+
+        self.is_connected = True
+
+        return bool(await self.storage.user_id())
 
     @property
     def session_string_file(self):
@@ -213,7 +249,12 @@ class BaseUserWorker:
         return {}
 
     def app_run(self, coroutine=None):
-        self.app.run(coroutine)
+        if coroutine is not None:
+            loop = asyncio.get_event_loop()
+            run = loop.run_until_complete
+            run(coroutine)
+        else:
+            self.app.run()
 
     @property
     def workdir(self) -> pathlib.Path:
