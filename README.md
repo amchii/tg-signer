@@ -226,6 +226,12 @@ tg-signer monitor run my_monitor
 
 ### 版本变动日志
 
+#### 0.6.3
+
+- 兼容kurigram 2.1.38版本的破坏性变更
+> Remove coroutine param from run method [a7afa32](https://github.com/KurimuzonAkuma/pyrogram/commit/a7afa32df208333eecdf298b2696a2da507bde95)
+
+
 #### 0.6.2
 
 - 忽略签到时发送消息失败的聊天
