@@ -66,10 +66,15 @@ class SignChat(BaseJSONConfig):
     delete_after: Optional[int] = None
     text_of_btn_to_click: Optional[str] = None  # 需要点击的按钮的文本
     choose_option_by_image: bool = False  # 需要根据图片选择选项
+    has_calculation_problem: bool = False  # 是否有计算题
 
     @property
-    def has_keyboard(self):
-        return bool(self.text_of_btn_to_click) or self.choose_option_by_image
+    def need_response(self):
+        return (
+            bool(self.text_of_btn_to_click)
+            or self.choose_option_by_image
+            or self.has_calculation_problem
+        )
 
 
 class SignConfigV2(BaseJSONConfig):

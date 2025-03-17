@@ -8,7 +8,7 @@ import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from datetime import time as dt_time
-from typing import BinaryIO, Optional, Type, TypedDict, TypeVar, Union
+from typing import Any, BinaryIO, Optional, Type, TypedDict, TypeVar, Union
 from urllib import parse
 
 from croniter import CroniterBadCronError, croniter
@@ -36,7 +36,12 @@ from tg_signer.config import (
     SignConfig,
 )
 
-from .ai_tools import choose_option_by_image, get_openai_client, get_reply
+from .ai_tools import (
+    calculate_problem,
+    choose_option_by_image,
+    get_openai_client,
+    get_reply,
+)
 from .notification.server_chan import sc_send
 
 logger = logging.getLogger("tg-signer")
@@ -501,6 +506,35 @@ class UserSigner(BaseUserWorker):
     def sign_record_file(self):
         return self.task_dir.joinpath("sign_record.json")
 
+    def _ask_keyboard(self, cfgs: dict[str, Any], input_: UserInput):
+        has_keyboard = input_("是否有键盘？(y/N)：")
+        text_of_btn_to_click = None
+        if has_keyboard.strip().lower() == "y":
+            text_of_btn_to_click = input_(
+                "键盘中需要点击的按钮文本（无则直接回车）: "
+            ).strip()
+        cfgs["text_of_btn_to_click"] = text_of_btn_to_click
+        return cfgs
+
+    def _ask_choose_option_by_image(self, cfgs: dict[str, Any], input_: UserInput):
+        choose_option_by_image_input = input_("是否有识图选择题？(y/N)：")
+        choose_option_by_image_ = choose_option_by_image_input.strip().lower() == "y"
+        if choose_option_by_image_:
+            print_to_user("图片识别将使用大模型回答，请确保大模型支持图片识别。")
+        cfgs["choose_option_by_image"] = choose_option_by_image_
+        return cfgs
+
+    def _ask_has_calculation_problem(self, cfgs: dict[str, Any], input_: UserInput):
+        if cfgs["choose_option_by_image"]:
+            print_to_user("当前'识图选择题'和'简单计算题'互斥，不同时支持。")
+            return cfgs
+        has_calculation_problem_input = input_("是否有简单计算题？(y/N)：")
+        has_calculation_problem = has_calculation_problem_input.strip().lower() == "y"
+        if has_calculation_problem:
+            print_to_user("计算题将使用大模型回答。")
+        cfgs["has_calculation_problem"] = has_calculation_problem
+        return cfgs
+
     def ask_one(self) -> SignChat:
         input_ = UserInput()
         chat_id = int(input_("Chat ID（登录时最近对话输出中的ID）: "))
@@ -513,28 +547,17 @@ class UserSigner(BaseUserWorker):
         )
         if delete_after:
             delete_after = int(delete_after)
-        has_keyboard = input_("是否有键盘？(y/N)：")
-        text_of_btn_to_click = None
-        choose_option_by_image_ = False
-        if has_keyboard.strip().lower() == "y":
-            text_of_btn_to_click = input_(
-                "键盘中需要点击的按钮文本（无则直接回车）: "
-            ).strip()
-            choose_option_by_image_input = input_(
-                "是否需要通过图片识别选择选项？(y/N)："
-            )
-            if choose_option_by_image_input.strip().lower() == "y":
-                choose_option_by_image_ = True
-                print_to_user(OPENAI_USE_PROMPT)
-        return SignChat.model_validate(
-            {
-                "chat_id": chat_id,
-                "sign_text": sign_text,
-                "delete_after": delete_after,
-                "text_of_btn_to_click": text_of_btn_to_click,
-                "choose_option_by_image": choose_option_by_image_,
-            }
-        )
+        cfgs = {
+            "chat_id": chat_id,
+            "sign_text": sign_text,
+            "delete_after": delete_after,
+        }
+        cfgs.update(self._ask_keyboard(cfgs, input_))
+        cfgs.update(self._ask_choose_option_by_image(cfgs, input_))
+        cfgs.update(self._ask_has_calculation_problem(cfgs, input_))
+        if cfgs["choose_option_by_image"] or cfgs["has_calculation_problem"]:
+            print_to_user(OPENAI_USE_PROMPT)
+        return SignChat.model_validate(cfgs)
 
     def ask_for_config(self) -> "SignConfig":
         chats = []
@@ -635,15 +658,21 @@ class UserSigner(BaseUserWorker):
                                 self.log(f"发送消息失败：{e}")
                                 continue
 
-                            if chat.has_keyboard:
+                            if chat.text_of_btn_to_click:
+                                self.context["waiting_counter"].add(chat.chat_id)
+                            if chat.has_calculation_problem:
+                                self.context["waiting_counter"].add(chat.chat_id)
+                            if chat.choose_option_by_image:
                                 self.context["waiting_counter"].add(chat.chat_id)
                             await asyncio.sleep(0.5)
                         sign_record[now_date_str] = now.isoformat()
                         with open(self.sign_record_file, "w", encoding="utf-8") as fp:
                             json.dump(sign_record, fp)
 
-                        wait_seconds = 300
-                        self.log(f"最多等待{wait_seconds}秒，用于响应可能的键盘点击...")
+                        wait_seconds = 60
+                        self.log(
+                            rf"最多等待{wait_seconds}秒，用于响应可能的键盘点击\识图选择题\计算题..."
+                        )
                         _start = time.perf_counter()
                         while (time.perf_counter() - _start) <= wait_seconds and bool(
                             self.context["waiting_counter"]
@@ -695,25 +724,23 @@ class UserSigner(BaseUserWorker):
         if not chats:
             self.log("忽略意料之外的聊天", level="WARNING")
             return
-        # 依次尝试匹配。同一个chat可能配置多个签到，但是没办法保持对方的回复按序到达
+        # 依次尝试匹配。同一个chat可能配置多个签到，但是没办法保证对方的回复按序到达
         for chat in chats:
-            ok = await self.handle_one_chat(chat, client, message)
-            if ok:
-                self.context["waiting_counter"].sub(message.chat.id)
-                break
+            await self.handle_once(chat, client, message)
 
-    async def handle_one_chat(
+    async def handle_once(
         self, chat: SignChat, client: Client, message: Message
     ) -> Optional[bool]:
-        if not chat.has_keyboard:
-            self.log("忽略，未显式配置需要点击按钮的选项")
+        if not chat.need_response:
+            self.log("忽略，未显式配置为需要响应")
             return False
         text_of_btn_to_click = chat.text_of_btn_to_click
         if reply_markup := message.reply_markup:
+            # 键盘
             if isinstance(reply_markup, InlineKeyboardMarkup):
-                clicked = False
                 flat_buttons = (b for row in reply_markup.inline_keyboard for b in row)
                 option_to_btn: dict[str, InlineKeyboardButton] = {}
+                # 未配置需要点击的按钮
                 if not text_of_btn_to_click:
                     option_to_btn = {btn.text: btn for btn in flat_buttons if btn.text}
                 else:
@@ -722,18 +749,11 @@ class UserSigner(BaseUserWorker):
                         option_to_btn[btn.text] = btn
                         if text_of_btn_to_click in btn.text:
                             self.log(f"点击按钮: {btn.text}")
-                            clicked = True
                             await self.request_callback_answer(
                                 client, message.chat.id, message.id, btn.callback_data
                             )
-                            break
-                    if clicked:
-                        if chat.choose_option_by_image:
-                            logger.info(
-                                "该聊天同时配置了点击按钮文本和图片识别选项，将继续等待下一步「图片识别」的消息"
-                            )
-                            self.context["waiting_counter"].add(message.chat.id)
-                        return True
+                            self.context["waiting_counter"].sub(message.chat.id)
+                            return True
                 if message.photo is not None and chat.choose_option_by_image:
                     self.log("检测到图片，尝试调用大模型进行图片")
                     ai_client = get_openai_client()
@@ -763,11 +783,22 @@ class UserSigner(BaseUserWorker):
                     await self.request_callback_answer(
                         client, message.chat.id, message.id, target_btn.callback_data
                     )
+                    self.context["waiting_counter"].sub(message.chat.id)
                     return True
             else:
                 self.log(f"忽略类型: {type(reply_markup)}", level="WARNING")
-        else:
-            self.log("未检测到按钮", level="WARNING")
+
+        if chat.has_calculation_problem and message.text:
+            self.log("检测到文本回复，尝试调用大模型进行计算题回答")
+            ai_client = get_openai_client()
+            if not ai_client:
+                self.log("未配置OpenAI API Key，无法使用AI服务", level="WARNING")
+                return False
+            self.log(f"问题: \n{message.text}")
+            answer = await calculate_problem(message.text, client=ai_client)
+            self.log(f"回答为: {answer}")
+            await self.send_message(message.chat.id, answer)
+            self.context["waiting_counter"].sub(message.chat.id)
 
     async def request_callback_answer(
         self,

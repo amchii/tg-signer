@@ -22,7 +22,8 @@ dependencies = [
     "click",
     "pydantic",
     "openai",
-    "croniter"
+    "croniter",
+    "json_repair"
 ]
 
 [project.urls]
@@ -65,6 +66,9 @@ ignore = [
     "B008", # do not perform function calls in argument defaults
     "C901", # too complex
     "W191", # indentation contains tabs
-    "B019",  # Use of `functools.lru_cache` or `functools.cache` on methods can lead to memory leaks
+    "B019", # Use of `functools.lru_cache` or `functools.cache` on methods can lead to memory leaks
     "B904"  # raise without from inside except
 ]
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
