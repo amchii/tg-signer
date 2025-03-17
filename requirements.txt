@@ -28,6 +28,8 @@ idna==3.10
     #   httpx
 jiter==0.8.2
     # via openai
+json-repair==0.39.1
+    # via tg-signer (pyproject.toml)
 kurirogram==2.1.38
     # via tg-signer (pyproject.toml)
 openai==1.62.0
