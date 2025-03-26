@@ -504,7 +504,9 @@ class UserSigner(BaseUserWorker):
 
     @property
     def sign_record_file(self):
-        return self.task_dir.joinpath("sign_record.json")
+        sign_record_dir = self.task_dir / str(self.user.id)
+        make_dirs(sign_record_dir)
+        return sign_record_dir / "sign_record.json"
 
     def _ask_keyboard(self, cfgs: dict[str, Any], input_: UserInput):
         has_keyboard = input_("是否有键盘？(y/N)：")

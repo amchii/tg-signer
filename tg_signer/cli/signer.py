@@ -402,10 +402,7 @@ def multi_run(obj, accounts, task_name, num_of_dialogs):
     coros = []
     for account in accounts:
         obj["account"] = account
-        signer = get_signer(
-            task_name,
-            obj,
-        )
+        signer = get_signer(task_name, obj)
         coros.append(signer.run(num_of_dialogs))
     loop = asyncio.get_event_loop()
     loop.run_until_complete(asyncio.gather(*coros))
