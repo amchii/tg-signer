@@ -63,6 +63,7 @@ class SignConfigV1(BaseJSONConfig):
 class SignChat(BaseJSONConfig):
     chat_id: int
     sign_text: str
+    as_dice: bool = False  # 作为Dice类型的emoji进行发送
     delete_after: Optional[int] = None
     text_of_btn_to_click: Optional[str] = None  # 需要点击的按钮的文本
     choose_option_by_image: bool = False  # 需要根据图片选择选项

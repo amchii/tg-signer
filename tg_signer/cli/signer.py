@@ -230,7 +230,7 @@ def run_once(obj, task_name, num_of_dialogs):
     signer.app_run(signer.run_once(num_of_dialogs))
 
 
-@tg_signer.command(help='发送一次消息, 请确保当前会话已经"见过"该`chat_id`')
+@tg_signer.command(help='发送一次文本消息, 请确保当前会话已经"见过"该`chat_id`')
 @click.argument(
     "chat_id",
     type=int,
@@ -248,6 +248,28 @@ def send_text(obj, chat_id, text, delete_after=None):
     singer = get_signer(None, obj)
     click.echo("将发送单次消息")
     singer.app_run(singer.send_text(chat_id, text, delete_after))
+
+
+@tg_signer.command(
+    help="发送一次DICE消息, 请确保当前会话已经\"见过\"该`chat_id`。\n注意，`emoji`应该是'🎲', '🎯', '🏀', '⚽', '🎳'或'🎰'之一"
+)
+@click.argument(
+    "chat_id",
+    type=int,
+)
+@click.argument("emoji")
+@click.option(
+    "--delete-after",
+    "delete_after",
+    type=int,
+    required=False,
+    help="秒, 发送消息后进行删除, 默认不删除, '0'表示立即删除.",
+)
+@click.pass_obj
+def send_dice(obj, chat_id, emoji, delete_after=None):
+    singer = get_signer(None, obj)
+    click.echo("将发送单次DICE消息")
+    singer.app_run(singer.send_dice_cli(chat_id, emoji, delete_after))
 
 
 @tg_signer.command(help="重新配置")

@@ -48,6 +48,8 @@ logger = logging.getLogger("tg-signer")
 
 print_to_user = print
 
+DICE_EMOJIS = ("🎲", "🎯", "🏀", "⚽", "🎳", "🎰")
+
 
 class Session(BaseSession):
     START_TIMEOUT = 5
@@ -107,37 +109,6 @@ class Client(BaseClient):
             return await self.start()
         except ConnectionError:
             pass
-
-    async def connect(
-        self: "Client",
-    ) -> bool:
-        """
-        Connect the client to Telegram servers.
-
-        Returns:
-            ``bool``: On success, in case the passed-in session is authorized, True is returned. Otherwise, in case
-            the session needs to be authorized, False is returned.
-
-        Raises:
-            ConnectionError: In case you try to connect an already connected client.
-        """
-        if self.is_connected:
-            raise ConnectionError("Client is already connected")
-
-        await self.load_session()
-
-        self.session = Session(
-            self,
-            await self.storage.dc_id(),
-            await self.storage.auth_key(),
-            await self.storage.test_mode(),
-        )
-
-        await self.session.start()
-
-        self.is_connected = True
-
-        return bool(await self.storage.user_id())
 
     @property
     def session_string_file(self):
@@ -416,6 +387,38 @@ class BaseUserWorker:
             self.log(f"Message「{text}」 to {chat_id} deleted!")
         return message
 
+    async def send_dice(
+        self,
+        chat_id: Union[int, str],
+        emoji: str = "🎲",
+        delete_after: int = None,
+        **kwargs,
+    ):
+        """
+        发送DICE类型消息
+        :param chat_id:
+        :param emoji: Should be one of "🎲", "🎯", "🏀", "⚽", "🎳", or "🎰".
+        :param delete_after:
+        :param kwargs:
+        :return:
+        """
+        emoji = emoji.strip()
+        if emoji not in DICE_EMOJIS:
+            self.log(
+                f"Warning, emoji should be one of {', '.join(DICE_EMOJIS)}",
+                level="WARNING",
+            )
+        message = await self.app.send_dice(chat_id, emoji, **kwargs)
+        if message and delete_after is not None:
+            self.log(
+                f"Dice「{emoji}」 to {chat_id} will be deleted after {delete_after} seconds."
+            )
+            self.log("Waiting...")
+            await asyncio.sleep(delete_after)
+            await message.delete()
+            self.log(f"Dice「{emoji}」 to {chat_id} deleted!")
+        return message
+
     async def search_members(
         self, chat_id: Union[int, str], query: str, admin=False, limit=10
     ):
@@ -541,6 +544,11 @@ class UserSigner(BaseUserWorker):
         input_ = UserInput()
         chat_id = int(input_("Chat ID（登录时最近对话输出中的ID）: "))
         sign_text = input_("签到文本（如 /sign）: ") or "/sign"
+        sign_text = sign_text.strip()
+        as_dice = False
+        if sign_text in DICE_EMOJIS:
+            as_dice_str = input_("是否以骰子类的emoji（如 🎲, 🎯）发送？(y/N)：")
+            as_dice = as_dice_str.strip().lower() == "y"
         delete_after = (
             input_(
                 "等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
@@ -553,6 +561,7 @@ class UserSigner(BaseUserWorker):
             "chat_id": chat_id,
             "sign_text": sign_text,
             "delete_after": delete_after,
+            "as_dice": as_dice,
         }
         cfgs.update(self._ask_keyboard(cfgs, input_))
         cfgs.update(self._ask_choose_option_by_image(cfgs, input_))
@@ -625,8 +634,13 @@ class UserSigner(BaseUserWorker):
                 sign_record = json.load(fp)
         return sign_record
 
-    async def sign(self, chat_id: int, sign_text: str, delete_after: int = None):
-        return await self.send_message(chat_id, sign_text, delete_after)
+    async def sign(
+        self,
+        chat: SignChat,
+    ):
+        if chat.as_dice:
+            return await self.send_dice(chat.chat_id, chat.sign_text, chat.delete_after)
+        return await self.send_message(chat.chat_id, chat.sign_text, chat.delete_after)
 
     async def run(
         self, num_of_dialogs=20, only_once: bool = False, force_rerun: bool = False
@@ -653,9 +667,7 @@ class UserSigner(BaseUserWorker):
                             self.context["sign_chats"][chat.chat_id].append(chat)
                             self.log(f"发送消息至「{chat.chat_id}」")
                             try:
-                                await self.sign(
-                                    chat.chat_id, chat.sign_text, chat.delete_after
-                                )
+                                await self.sign(chat)
                             except errors.BadRequest as e:
                                 self.log(f"发送消息失败：{e}")
                                 continue
@@ -711,6 +723,18 @@ class UserSigner(BaseUserWorker):
             await self.login(print_chat=False)
         async with self.app:
             await self.send_message(chat_id, text, delete_after, **kwargs)
+
+    async def send_dice_cli(
+        self,
+        chat_id: Union[str, int],
+        emoji: str = "🎲",
+        delete_after: int = None,
+        **kwargs,
+    ):
+        if self.user is None:
+            await self.login(print_chat=False)
+        async with self.app:
+            await self.send_dice(chat_id, emoji, delete_after, **kwargs)
 
     async def on_message(self, client, message: Message):
         try:
