@@ -678,7 +678,7 @@ class UserSigner(BaseUserWorker):
                                 self.context["waiting_counter"].add(chat.chat_id)
                             if chat.choose_option_by_image:
                                 self.context["waiting_counter"].add(chat.chat_id)
-                            await asyncio.sleep(0.5)
+                            await asyncio.sleep(config.sign_interval)
                         sign_record[now_date_str] = now.isoformat()
                         with open(self.sign_record_file, "w", encoding="utf-8") as fp:
                             json.dump(sign_record, fp)

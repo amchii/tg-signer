@@ -86,6 +86,7 @@ class SignConfigV2(BaseJSONConfig):
     chats: List[SignChat]
     sign_at: str  # 签到时间，time或crontab表达式
     random_seconds: int = 0
+    sign_interval: int = 1  # 连续签到的间隔时间，单位秒
 
 
 SignConfig = SignConfigV2
