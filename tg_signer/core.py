@@ -8,10 +8,19 @@ import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from datetime import time as dt_time
-from typing import Any, BinaryIO, Optional, Type, TypedDict, TypeVar, Union
+from typing import (
+    BinaryIO,
+    Generic,
+    List,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+)
 from urllib import parse
 
 from croniter import CroniterBadCronError, croniter
+from pydantic import BaseModel, ConfigDict, ValidationError
 from pyrogram import Client as BaseClient
 from pyrogram import errors, filters
 from pyrogram.enums import ChatMembersFilter, ChatType
@@ -29,11 +38,18 @@ from pyrogram.types import (
 )
 
 from tg_signer.config import (
+    ActionT,
     BaseJSONConfig,
+    ChooseOptionByImageAction,
+    ClickKeyboardByTextAction,
     MatchConfig,
     MonitorConfig,
-    SignChat,
-    SignConfig,
+    ReplyByCalculationProblemAction,
+    SendDiceAction,
+    SendTextAction,
+    SignChatV3,
+    SignConfigV3,
+    SupportAction,
 )
 
 from .ai_tools import (
@@ -43,6 +59,7 @@ from .ai_tools import (
     get_reply,
 )
 from .notification.server_chan import sc_send
+from .utils import NumberingLangT, numbering
 
 logger = logging.getLogger("tg-signer")
 
@@ -56,13 +73,36 @@ class Session(BaseSession):
 
 
 class UserInput:
-    def __init__(self, index: int = 1):
+    def __init__(self, index: int = 1, numbering_lang: NumberingLangT = "arabic"):
         self.index = index
+        self.numbering_lang = numbering_lang
+
+    def incr(self, n: int = 1):
+        self.index += n
+
+    def decr(self, n: int = 1):
+        self.index -= n
+
+    @property
+    def index_str(self):
+        return f"{numbering(self.index, self.numbering_lang)}. "
 
     def __call__(self, prompt: str = None):
-        r = input(f"{self.index}. {prompt}")
-        self.index += 1
+        r = input(f"{self.index_str}{prompt}")
+        self.incr(1)
         return r
+
+
+def indent(
+    s: str,
+    level=0,
+    indentation: str = "\t",
+    sep: str = "\n",
+):
+    r = ""
+    for line in s.split(sep):
+        r += indentation * level + line + sep
+    return r
 
 
 def readable_message(message: Message):
@@ -189,10 +229,10 @@ def make_dirs(path: pathlib.Path, exist_ok=True):
 ConfigT = TypeVar("ConfigT", bound=BaseJSONConfig)
 
 
-class BaseUserWorker:
+class BaseUserWorker(Generic[ConfigT]):
     _workdir = "."
     _tasks_dir = "tasks"
-    cfg_cls: Type[ConfigT] = BaseJSONConfig
+    cfg_cls: Type["ConfigT"] = BaseJSONConfig
 
     def __init__(
         self,
@@ -459,7 +499,7 @@ class BaseUserWorker:
         raise NotImplementedError
 
 
-class WaitCounter:
+class Waiter:
     def __init__(self):
         self.waiting_ids = set()
         self.waiting_counter = Counter()
@@ -488,22 +528,29 @@ class WaitCounter:
         return f"<{self.__class__.__name__}: {self.waiting_counter}>"
 
 
-class UserSignerWorkerContext(TypedDict, total=False):
-    waiting_counter: WaitCounter
-    sign_chats: dict[int, list[SignChat]]
+class UserSignerWorkerContext(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    waiter: Waiter
+    sign_chats: defaultdict[int, List[SignChatV3]]
+    chat_messages: defaultdict[int, List[Message]]
 
 
 OPENAI_USE_PROMPT = '在运行前请通过环境变量正确设置`OPENAI_API_KEY`, `OPENAI_BASE_URL`。默认模型为"gpt-4o", 可通过环境变量`OPENAI_MODEL`更改。'
 
 
-class UserSigner(BaseUserWorker):
+class UserSigner(BaseUserWorker[SignConfigV3]):
     _workdir = ".signer"
     _tasks_dir = "signs"
-    cfg_cls = SignConfig
+    cfg_cls = SignConfigV3
     context: UserSignerWorkerContext
 
     def ensure_ctx(self) -> UserSignerWorkerContext:
-        return {"waiting_counter": WaitCounter(), "sign_chats": defaultdict(list)}
+        return UserSignerWorkerContext(
+            waiter=Waiter(),
+            sign_chats=defaultdict(list),
+            chat_messages=defaultdict(list),
+        )
 
     @property
     def sign_record_file(self):
@@ -511,44 +558,67 @@ class UserSigner(BaseUserWorker):
         make_dirs(sign_record_dir)
         return sign_record_dir / "sign_record.json"
 
-    def _ask_keyboard(self, cfgs: dict[str, Any], input_: UserInput):
-        has_keyboard = input_("是否有键盘？(y/N)：")
-        text_of_btn_to_click = None
-        if has_keyboard.strip().lower() == "y":
-            text_of_btn_to_click = input_(
-                "键盘中需要点击的按钮文本（无则直接回车）: "
-            ).strip()
-        cfgs["text_of_btn_to_click"] = text_of_btn_to_click
-        return cfgs
+    def _ask_actions(
+        self, input_: UserInput, available_actions: List[SupportAction] = None
+    ) -> List[ActionT]:
+        print_to_user(f"{input_.index_str}开始配置<动作>，请按照实际签到顺序配置。")
+        available_actions = available_actions or list(SupportAction)
+        for action in available_actions:
+            print_to_user(f"  {action.value}: {action.desc}")
+        print_to_user()
+        actions = []
+        print_openai_prompt = False
+        while True:
+            try:
+                local_input_ = UserInput()
+                print_to_user(f"第{len(actions) + 1}个动作: ")
+                action_str = local_input_("输入对应的数字选择动作: ").strip()
+                action = SupportAction(int(action_str))
+                if action not in available_actions:
+                    raise ValueError(f"不支持的动作: {action}")
+                if len(actions) == 0 and action not in [
+                    SupportAction.SEND_TEXT,
+                    SupportAction.SEND_DICE,
+                ]:
+                    raise ValueError(
+                        f"第一个动作必须为「{SupportAction.SEND_TEXT.desc}」或「{SupportAction.SEND_DICE.desc}」"
+                    )
+                if action == SupportAction.SEND_TEXT:
+                    text = local_input_("输入要发送的文本: ")
+                    actions.append(SendTextAction(text=text))
+                elif action == SupportAction.SEND_DICE:
+                    dice = local_input_("输入要发送的骰子（如 🎲, 🎯）: ")
+                    actions.append(SendDiceAction(dice=dice))
+                elif action == SupportAction.CLICK_KEYBOARD_BY_TEXT:
+                    text_of_btn_to_click = local_input_("键盘中需要点击的按钮文本: ")
+                    actions.append(ClickKeyboardByTextAction(text=text_of_btn_to_click))
+                elif action == SupportAction.CHOOSE_OPTION_BY_IMAGE:
+                    print_to_user(
+                        "图片识别将使用大模型回答，请确保大模型支持图片识别。"
+                    )
+                    print_openai_prompt = True
+                    actions.append(ChooseOptionByImageAction())
+                elif action == SupportAction.REPLY_BY_CALCULATION_PROBLEM:
+                    print_to_user("计算题将使用大模型回答。")
+                    print_openai_prompt = True
+                    actions.append(ReplyByCalculationProblemAction())
+                else:
+                    raise ValueError(f"不支持的动作: {action}")
+                if local_input_("是否继续添加动作？(y/N)：").strip().lower() != "y":
+                    break
+            except (ValueError, ValidationError) as e:
+                print_to_user("错误: ")
+                print_to_user(e)
+        if print_openai_prompt:
+            print_to_user(OPENAI_USE_PROMPT)
+        input_.incr()
+        return actions
 
-    def _ask_choose_option_by_image(self, cfgs: dict[str, Any], input_: UserInput):
-        choose_option_by_image_input = input_("是否有识图选择题？(y/N)：")
-        choose_option_by_image_ = choose_option_by_image_input.strip().lower() == "y"
-        if choose_option_by_image_:
-            print_to_user("图片识别将使用大模型回答，请确保大模型支持图片识别。")
-        cfgs["choose_option_by_image"] = choose_option_by_image_
-        return cfgs
-
-    def _ask_has_calculation_problem(self, cfgs: dict[str, Any], input_: UserInput):
-        if cfgs["choose_option_by_image"]:
-            print_to_user("当前'识图选择题'和'简单计算题'互斥，不同时支持。")
-            return cfgs
-        has_calculation_problem_input = input_("是否有简单计算题？(y/N)：")
-        has_calculation_problem = has_calculation_problem_input.strip().lower() == "y"
-        if has_calculation_problem:
-            print_to_user("计算题将使用大模型回答。")
-        cfgs["has_calculation_problem"] = has_calculation_problem
-        return cfgs
-
-    def ask_one(self) -> SignChat:
-        input_ = UserInput()
+    def ask_one(self) -> SignChatV3:
+        input_ = UserInput(numbering_lang="chinese_simple")
         chat_id = int(input_("Chat ID（登录时最近对话输出中的ID）: "))
-        sign_text = input_("签到文本（如 /sign）: ") or "/sign"
-        sign_text = sign_text.strip()
-        as_dice = False
-        if sign_text in DICE_EMOJIS:
-            as_dice_str = input_("是否以骰子类的emoji（如 🎲, 🎯）发送？(y/N)：")
-            as_dice = as_dice_str.strip().lower() == "y"
+        name = input_("Chat名称（可选）: ")
+        actions = self._ask_actions(input_)
         delete_after = (
             input_(
                 "等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
@@ -559,18 +629,13 @@ class UserSigner(BaseUserWorker):
             delete_after = int(delete_after)
         cfgs = {
             "chat_id": chat_id,
-            "sign_text": sign_text,
+            "name": name,
             "delete_after": delete_after,
-            "as_dice": as_dice,
+            "actions": actions,
         }
-        cfgs.update(self._ask_keyboard(cfgs, input_))
-        cfgs.update(self._ask_choose_option_by_image(cfgs, input_))
-        cfgs.update(self._ask_has_calculation_problem(cfgs, input_))
-        if cfgs["choose_option_by_image"] or cfgs["has_calculation_problem"]:
-            print_to_user(OPENAI_USE_PROMPT)
-        return SignChat.model_validate(cfgs)
+        return SignChatV3.model_validate(cfgs)
 
-    def ask_for_config(self) -> "SignConfig":
+    def ask_for_config(self) -> "SignConfigV3":
         chats = []
         i = 1
         print_to_user(f"开始配置任务<{self.task_name}>")
@@ -596,7 +661,7 @@ class UserSigner(BaseUserWorker):
 
         random_seconds_str = input("签到时间误差随机秒数（默认为0）: ") or "0"
         random_seconds = int(float(random_seconds_str))
-        config = SignConfig.model_validate(
+        config = SignConfigV3.model_validate(
             {
                 "chats": chats,
                 "sign_at": sign_at,
@@ -636,11 +701,11 @@ class UserSigner(BaseUserWorker):
 
     async def sign(
         self,
-        chat: SignChat,
+        chat: SignChatV3,
     ):
-        if chat.as_dice:
-            return await self.send_dice(chat.chat_id, chat.sign_text, chat.delete_after)
-        return await self.send_message(chat.chat_id, chat.sign_text, chat.delete_after)
+        self.log(f"开始签到: \n{chat}")
+        for action in chat.actions:
+            await self.wait_for(chat, action)
 
     async def run(
         self, num_of_dialogs=20, only_once: bool = False, force_rerun: bool = False
@@ -661,37 +726,20 @@ class UserSigner(BaseUserWorker):
                     now = get_now()
                     self.log(f"当前时间: {now}")
                     now_date_str = str(now.date())
-                    self.context["waiting_counter"].clear()
+                    self.context = self.ensure_ctx()
                     if now_date_str not in sign_record or force_rerun:
                         for chat in config.chats:
-                            self.context["sign_chats"][chat.chat_id].append(chat)
-                            self.log(f"发送消息至「{chat.chat_id}」")
+                            self.context.sign_chats[chat.chat_id].append(chat)
                             try:
                                 await self.sign(chat)
-                            except errors.BadRequest as e:
-                                self.log(f"发送消息失败：{e}")
+                            except errors.BadRequest:
                                 continue
 
-                            if chat.text_of_btn_to_click:
-                                self.context["waiting_counter"].add(chat.chat_id)
-                            if chat.has_calculation_problem:
-                                self.context["waiting_counter"].add(chat.chat_id)
-                            if chat.choose_option_by_image:
-                                self.context["waiting_counter"].add(chat.chat_id)
+                            self.context.chat_messages[chat.chat_id].clear()
                             await asyncio.sleep(config.sign_interval)
                         sign_record[now_date_str] = now.isoformat()
                         with open(self.sign_record_file, "w", encoding="utf-8") as fp:
                             json.dump(sign_record, fp)
-
-                        wait_seconds = 60
-                        self.log(
-                            rf"最多等待{wait_seconds}秒，用于响应可能的键盘点击\识图选择题\计算题..."
-                        )
-                        _start = time.perf_counter()
-                        while (time.perf_counter() - _start) <= wait_seconds and bool(
-                            self.context["waiting_counter"]
-                        ):
-                            await asyncio.sleep(1)
                         self.log("Done")
 
                     else:
@@ -746,75 +794,36 @@ class UserSigner(BaseUserWorker):
         self.log(
             f"收到来自「{message.from_user.username or message.from_user.id}」的消息: {readable_message(message)}"
         )
-        chats = self.context["sign_chats"].get(message.chat.id)
+        chats = self.context.sign_chats.get(message.chat.id)
         if not chats:
             self.log("忽略意料之外的聊天", level="WARNING")
             return
-        # 依次尝试匹配。同一个chat可能配置多个签到，但是没办法保证对方的回复按序到达
-        for chat in chats:
-            await self.handle_once(chat, client, message)
+        self.context.chat_messages[message.chat.id].append(message)
 
-    async def handle_once(
-        self, chat: SignChat, client: Client, message: Message
-    ) -> Optional[bool]:
-        if not chat.need_response:
-            self.log("忽略，未显式配置为需要响应")
-            return False
-        text_of_btn_to_click = chat.text_of_btn_to_click
+    async def _click_keyboard_by_text(
+        self, action: ClickKeyboardByTextAction, message: Message
+    ):
         if reply_markup := message.reply_markup:
-            # 键盘
             if isinstance(reply_markup, InlineKeyboardMarkup):
                 flat_buttons = (b for row in reply_markup.inline_keyboard for b in row)
                 option_to_btn: dict[str, InlineKeyboardButton] = {}
-                # 未配置需要点击的按钮
-                if not text_of_btn_to_click:
-                    option_to_btn = {btn.text: btn for btn in flat_buttons if btn.text}
-                else:
-                    # 遍历button并根据配置的按钮文本匹配
-                    for btn in flat_buttons:
-                        option_to_btn[btn.text] = btn
-                        if text_of_btn_to_click in btn.text:
-                            self.log(f"点击按钮: {btn.text}")
-                            await self.request_callback_answer(
-                                client, message.chat.id, message.id, btn.callback_data
-                            )
-                            self.context["waiting_counter"].sub(message.chat.id)
-                            return True
-                if message.photo is not None and chat.choose_option_by_image:
-                    self.log("检测到图片，尝试调用大模型进行图片")
-                    ai_client = get_openai_client()
-                    if not ai_client:
-                        self.log(
-                            "未配置OpenAI API Key，无法使用AI服务", level="WARNING"
+                for btn in flat_buttons:
+                    option_to_btn[btn.text] = btn
+                    if action.text in btn.text:
+                        self.log(f"点击按钮: {btn.text}")
+                        await self.request_callback_answer(
+                            self.app,
+                            message.chat.id,
+                            message.id,
+                            btn.callback_data,
                         )
-                        return False
-                    image_buffer: BinaryIO = await client.download_media(
-                        message.photo.file_id, in_memory=True
-                    )
-                    image_buffer.seek(0)
-                    image_bytes = image_buffer.read()
-                    options = list(option_to_btn)
-                    result_index = await choose_option_by_image(
-                        image_bytes,
-                        "选择正确的选项",
-                        list(enumerate(options)),
-                        client=ai_client,
-                    )
-                    result = options[result_index]
-                    self.log(f"选择结果为: {result}")
-                    target_btn = option_to_btn.get(result.strip())
-                    if not target_btn:
-                        self.log("未找到匹配的按钮", level="WARNING")
-                        return False
-                    await self.request_callback_answer(
-                        client, message.chat.id, message.id, target_btn.callback_data
-                    )
-                    self.context["waiting_counter"].sub(message.chat.id)
-                    return True
-            else:
-                self.log(f"忽略类型: {type(reply_markup)}", level="WARNING")
+                        return True
+        return False
 
-        if chat.has_calculation_problem and message.text:
+    async def _reply_by_calculation_problem(
+        self, action: ReplyByCalculationProblemAction, message
+    ):
+        if message.text:
             self.log("检测到文本回复，尝试调用大模型进行计算题回答")
             ai_client = get_openai_client()
             if not ai_client:
@@ -824,7 +833,83 @@ class UserSigner(BaseUserWorker):
             answer = await calculate_problem(message.text, client=ai_client)
             self.log(f"回答为: {answer}")
             await self.send_message(message.chat.id, answer)
-            self.context["waiting_counter"].sub(message.chat.id)
+            return True
+        return False
+
+    async def _choose_option_by_image(self, action: ChooseOptionByImageAction, message):
+        if reply_markup := message.reply_markup:
+            if isinstance(reply_markup, InlineKeyboardMarkup) and message.photo:
+                flat_buttons = (b for row in reply_markup.inline_keyboard for b in row)
+                option_to_btn = {btn.text: btn for btn in flat_buttons if btn.text}
+                self.log("检测到图片，尝试调用大模型进行图片识别并选择选项")
+                ai_client = get_openai_client()
+                if not ai_client:
+                    self.log(
+                        "未配置OpenAI API Key，无法使用AI服务",
+                        level="WARNING",
+                    )
+                    return False
+                image_buffer: BinaryIO = await self.app.download_media(
+                    message.photo.file_id, in_memory=True
+                )
+                image_buffer.seek(0)
+                image_bytes = image_buffer.read()
+                options = list(option_to_btn)
+                result_index = await choose_option_by_image(
+                    image_bytes,
+                    "选择正确的选项",
+                    list(enumerate(options)),
+                    client=ai_client,
+                )
+                result = options[result_index]
+                self.log(f"选择结果为: {result}")
+                target_btn = option_to_btn.get(result.strip())
+                if not target_btn:
+                    self.log("未找到匹配的按钮", level="WARNING")
+                    return False
+                await self.request_callback_answer(
+                    self.app,
+                    message.chat.id,
+                    message.id,
+                    target_btn.callback_data,
+                )
+                return True
+        return False
+
+    async def wait_for(self, chat: SignChatV3, action: ActionT, timeout=10):
+        self.log(f"处理动作: {action}")
+        if isinstance(action, SendTextAction):
+            return await self.send_message(chat.chat_id, action.text, chat.delete_after)
+        elif isinstance(action, SendDiceAction):
+            return await self.send_dice(chat.chat_id, action.dice, chat.delete_after)
+        self.context.waiter.add(chat.chat_id)
+        start = time.perf_counter()
+        self.log(f"等待处理动作: {action}")
+        last_message = None
+        while time.perf_counter() - start < timeout:
+            await asyncio.sleep(0.3)
+            messages = self.context.chat_messages.get(chat.chat_id)
+            if not messages:
+                continue
+            # 暂无新消息
+            if messages[-1] == last_message:
+                continue
+            last_message = messages[-1]
+            for message in messages:
+                ok = False
+                if isinstance(action, ClickKeyboardByTextAction):
+                    ok = await self._click_keyboard_by_text(action, message)
+                elif isinstance(action, ReplyByCalculationProblemAction):
+                    ok = await self._reply_by_calculation_problem(action, message)
+                elif isinstance(action, ChooseOptionByImageAction):
+                    ok = await self._choose_option_by_image(action, message)
+                if ok:
+                    self.context.waiter.sub(message.chat.id)
+                    # 这里移除了该消息，消息列表不可再迭代
+                    self.context.chat_messages[chat.chat_id].remove(message)
+                    return
+                self.log(f"忽略消息: {readable_message(message)}")
+        self.log(f"等待超时: chat: {chat}, action: {action}", level="WARNING")
 
     async def request_callback_answer(
         self,
