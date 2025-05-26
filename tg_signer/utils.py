@@ -1,4 +1,6 @@
-from typing import Dict, Literal, TypeAlias
+from typing import Dict, Literal
+
+from typing_extensions import TypeAlias
 
 NumberingLangT: TypeAlias = Literal[
     "arabic",

@@ -23,7 +23,8 @@ dependencies = [
     "pydantic",
     "openai",
     "croniter",
-    "json_repair"
+    "json_repair",
+    "typing-extensions"
 ]
 
 [project.urls]

@@ -58,6 +58,7 @@ tqdm==4.67.1
     # via openai
 typing-extensions==4.12.2
     # via
+    #   tg-signer (pyproject.toml)
     #   anyio
     #   openai
     #   pydantic
