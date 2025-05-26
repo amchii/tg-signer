@@ -9,6 +9,35 @@ from pyrogram.types import Message
 from typing_extensions import Self, TypeAlias
 
 
+def get_display_width(text: str) -> int:
+    """计算文本在终端中的显示宽度（考虑中文字符占2个字符位）"""
+    width = 0
+    for char in text:
+        if ord(char) > 127:  # 非ASCII字符（包括中文）
+            width += 2
+        else:
+            width += 1
+    return width
+
+
+def pad_text_to_width(text: str, target_width: int, align: str = "left") -> str:
+    """将文本填充到指定宽度"""
+    current_width = get_display_width(text)
+    padding_needed = target_width - current_width
+
+    if padding_needed <= 0:
+        return text
+
+    if align == "left":
+        return text + " " * padding_needed
+    elif align == "right":
+        return " " * padding_needed + text
+    else:  # center
+        left_padding = padding_needed // 2
+        right_padding = padding_needed - left_padding
+        return " " * left_padding + text + " " * right_padding
+
+
 class BaseJSONConfig(BaseModel):
     version: ClassVar[str] = 0
     olds: ClassVar[Optional[List[Type["BaseJSONConfig"]]]] = None
@@ -200,21 +229,31 @@ class SignChatV3(BaseJSONConfig):
         )
 
     def __str__(self) -> str:
-        # 构建顶部边框
-        top_border = "╔" + "═" * 50 + "╗"
-        bottom_border = "╚" + "═" * 50 + "╝"
+        # 设置总宽度（不包括边框字符）
+        content_width = 48
+
+        # 构建边框
+        top_border = "╔" + "═" * content_width + "╗"
+        bottom_border = "╚" + "═" * content_width + "╝"
+        separator = "╟" + "─" * content_width + "╢"
 
         # 构建标题部分
-        title = f"║ {'Chat ID:':<15}{self.chat_id:<34} ║"
+        chat_id_text = f"Chat ID: {self.chat_id}"
+        title = f"║ {pad_text_to_width(chat_id_text, content_width - 2)} ║"
+
+        # 构建name部分
+        name_text = f"Name: {self.name or '-'}"
+        name_info = f"║ {pad_text_to_width(name_text, content_width - 2)} ║"
 
         # 构建删除时间部分
-        delete_info = f"║ {'Delete After:':<15}{str(self.delete_after or 'None'):<34} ║"
-
-        # 构建分隔线
-        separator = "╟" + "─" * 50 + "╢"
+        delete_text = f"Delete After: {self.delete_after or '-'}"
+        delete_info = f"║ {pad_text_to_width(delete_text, content_width - 2)} ║"
 
         # 构建actions部分
-        actions_header = "║ Actions Flow:" + " " * 36 + "║"
+        actions_header_text = "Actions Flow:"
+        actions_header = (
+            f"║ {pad_text_to_width(actions_header_text, content_width - 2)} ║"
+        )
         actions_lines = []
 
         for i, action in enumerate(self.actions, 1):
@@ -222,23 +261,31 @@ class SignChatV3(BaseJSONConfig):
             details = ""
 
             if isinstance(action, SendTextAction):
-                details = (
-                    f"Text: {action.text[:20]}{'...' if len(action.text) > 20 else ''}"
+                text_preview = (
+                    action.text[:15] + "..." if len(action.text) > 15 else action.text
                 )
+                details = f"Text: {text_preview}"
             elif isinstance(action, SendDiceAction):
                 details = f"Dice: {action.dice}"
             elif isinstance(action, ClickKeyboardByTextAction):
-                details = (
-                    f"Click: {action.text[:20]}{'...' if len(action.text) > 20 else ''}"
+                text_preview = (
+                    action.text[:15] + "..." if len(action.text) > 15 else action.text
                 )
+                details = f"Click: {text_preview}"
 
-            action_line = f"║ {i}. [{action_type}] {details:<30} ║"
+            if details:
+                action_text = f"{i}. [{action_type}] {details}"
+            else:
+                action_text = f"{i}. [{action_type}]"
+
+            action_line = f"║ {pad_text_to_width(action_text, content_width - 2)} ║"
             actions_lines.append(action_line)
 
         # 组合所有部分
         result = [
             top_border,
             title,
+            name_info,
             delete_info,
             separator,
             actions_header,

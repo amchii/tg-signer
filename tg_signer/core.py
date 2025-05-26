@@ -638,11 +638,14 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
     def ask_for_config(self) -> "SignConfigV3":
         chats = []
         i = 1
-        print_to_user(f"开始配置任务<{self.task_name}>")
+        print_to_user(f"开始配置任务<{self.task_name}>\n")
         while True:
-            print_to_user(f"第{i}个签到")
+            print_to_user(f"第{i}个签到: ")
             try:
-                chats.append(self.ask_one())
+                chat = self.ask_one()
+                print_to_user(chat)
+                print_to_user(f"第{i}个签到配置成功\n")
+                chats.append(chat)
             except Exception as e:
                 print_to_user(e)
                 print_to_user("配置失败")
