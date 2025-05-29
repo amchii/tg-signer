@@ -2,9 +2,18 @@ import re
 from datetime import time
 from enum import Enum
 from functools import cached_property
-from typing import ClassVar, List, Literal, Optional, Tuple, Type, Union
+from typing import (
+    ClassVar,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 
-from pydantic import BaseModel, ValidationError
+from pydantic import AnyHttpUrl, BaseModel, ValidationError
 from pyrogram.types import Message
 from typing_extensions import Self, TypeAlias
 
@@ -112,7 +121,7 @@ class SignChatV2(BaseJSONConfig):
 class SignConfigV2(BaseJSONConfig):
     version: ClassVar = 2
     olds: ClassVar = [SignConfigV1]
-    is_current: ClassVar = True
+    is_current: ClassVar = False
 
     chats: List[SignChatV2]
     sign_at: str  # 签到时间，time或crontab表达式
@@ -301,6 +310,7 @@ class SignConfigV3(BaseJSONConfig):
     olds: ClassVar = [SignConfigV2]
     is_current: ClassVar = True
 
+    _version: Literal[3] = 3
     chats: List[SignChatV3]
     sign_at: str  # 签到时间，time或crontab表达式
     random_seconds: int = 0
@@ -310,6 +320,19 @@ class SignConfigV3(BaseJSONConfig):
 MatchRuleT: TypeAlias = Literal["exact", "contains", "regex", "all"]
 
 
+class UDPForward(BaseModel):
+    type: Literal["udp"] = "udp"
+    host: str
+    port: int
+
+
+class HttpCallback(BaseModel):
+    type: Literal["http"] = "http"
+    url: AnyHttpUrl
+    headers: Optional[Dict[str, str]] = None
+    method: Literal["post"] = "post"
+
+
 class MatchConfig(BaseJSONConfig):
     chat_id: Union[int, str] = None  # 聊天id或username
     rule: MatchRuleT = "exact"  # 匹配规则
@@ -317,6 +340,7 @@ class MatchConfig(BaseJSONConfig):
     from_user_ids: Optional[List[Union[int, str]]] = (
         None  # 发送者id或username，为空时，匹配所有人
     )
+    always_ignore_me: bool = False  # 总是忽略自己发送的消息
     default_send_text: Optional[str] = None  # 默认发送内容
     ai_reply: bool = False  # 是否使用AI回复
     ai_prompt: Optional[str] = None
@@ -325,6 +349,9 @@ class MatchConfig(BaseJSONConfig):
     ignore_case: bool = True  # 忽略大小写
     forward_to_chat_id: Optional[Union[int, str]] = (
         None  # 转发消息到该聊天，默认为消息来源
+    )
+    external_forwards: Optional[List[Union[UDPForward, HttpCallback]]] = (
+        None  # 转发到外部
     )
     push_via_server_chan: bool = False  # 将消息通过server酱推送
     server_chan_send_key: Optional[str] = None  # server酱的sendkey
@@ -349,9 +376,11 @@ class MatchConfig(BaseJSONConfig):
         }
 
     def match_user(self, message: "Message"):
-        if not self.from_user_ids:
-            return True
         if not message.from_user:
+            return True
+        if self.always_ignore_me and message.from_user.is_self:
+            return False
+        if not self.from_user_ids:
             return True
         return (
             message.from_user.id in self.from_user_set

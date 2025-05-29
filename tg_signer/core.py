@@ -19,6 +19,7 @@ from typing import (
 )
 from urllib import parse
 
+import httpx
 from croniter import CroniterBadCronError, croniter
 from pydantic import BaseModel, ConfigDict, ValidationError
 from pyrogram import Client as BaseClient
@@ -42,6 +43,7 @@ from tg_signer.config import (
     BaseJSONConfig,
     ChooseOptionByImageAction,
     ClickKeyboardByTextAction,
+    HttpCallback,
     MatchConfig,
     MonitorConfig,
     ReplyByCalculationProblemAction,
@@ -50,6 +52,7 @@ from tg_signer.config import (
     SignChatV3,
     SignConfigV3,
     SupportAction,
+    UDPForward,
 )
 
 from .ai_tools import (
@@ -968,7 +971,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                 print_to_user(f"{message.date}: {message.text}")
 
 
-class UserMonitor(BaseUserWorker):
+class UserMonitor(BaseUserWorker[MonitorConfig]):
     _workdir = ".monitor"
     _tasks_dir = "monitors"
     cfg_cls = MonitorConfig
@@ -980,7 +983,7 @@ class UserMonitor(BaseUserWorker):
         if not chat_id.startswith("@"):
             chat_id = int(chat_id)
         rules = ["exact", "contains", "regex", "all"]
-        while rule := input_(f"匹配规则({', '.join(rules)}): ") or "exact":
+        while rule := (input_(f"匹配规则({', '.join(rules)}): ") or "exact"):
             if rule in rules:
                 break
             print_to_user("不存在的规则, 请重新输入!")
@@ -995,6 +998,7 @@ class UserMonitor(BaseUserWorker):
             )
             or None
         )
+        always_ignore_me = input_("总是忽略自己发送的消息（y/N）: ").lower() == "y"
         if from_user_ids:
             from_user_ids = [
                 i if i.startswith("@") else int(i) for i in from_user_ids.split(",")
@@ -1016,30 +1020,69 @@ class UserMonitor(BaseUserWorker):
                 input_("从消息中提取发送文本的正则表达式（不需要则直接回车）: ") or None
             )
 
-        delete_after = (
-            input_(
-                "等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
+        if default_send_text or ai_reply or send_text_search_regex:
+            delete_after = (
+                input_(
+                    "发送消息后等待N秒进行删除（'0'表示立即删除, 不需要删除直接回车）， N: "
+                )
+                or None
             )
-            or None
-        )
-        if delete_after:
-            delete_after = int(delete_after)
-        forward_to_chat_id = (input_("转发消息到该聊天ID，默认为消息来源：")).strip()
-        if forward_to_chat_id and not forward_to_chat_id.startswith("@"):
-            forward_to_chat_id = int(forward_to_chat_id)
+            if delete_after:
+                delete_after = int(delete_after)
+            forward_to_chat_id = (
+                input_("转发消息到该聊天ID，默认为消息来源：")
+            ).strip()
+            if forward_to_chat_id and not forward_to_chat_id.startswith("@"):
+                forward_to_chat_id = int(forward_to_chat_id)
+        else:
+            delete_after = None
+            forward_to_chat_id = None
+
         push_via_server_chan = (
             input_("是否通过Server酱推送消息(y/N): ") or "n"
         ).lower() == "y"
-        server_chan_send_key = (
-            input_("Server酱的SendKey（不填将从环境变量`SERVER_CHAN_SEND_KEY`读取: ")
-            or None
+        server_chan_send_key = None
+        if push_via_server_chan:
+            server_chan_send_key = (
+                input_(
+                    "Server酱的SendKey（不填将从环境变量`SERVER_CHAN_SEND_KEY`读取）: "
+                )
+                or None
+            )
+
+        forward_to_external = (
+            input_("是否需要转发到外部（UDP, Http）(y/N): ").lower() == "y"
         )
+        external_forwards = None
+        if forward_to_external:
+            external_forwards = []
+            if input_("是否需要转发到UDP(y/N): ").lower() == "y":
+                addr = input_("请输入UDP服务器地址和端口（形如`127.0.0.1:1234`）: ")
+                host, port = addr.split(":")
+                external_forwards.append(
+                    {
+                        "host": host,
+                        "port": int(port),
+                    }
+                )
+
+            if input_("是否需要转发到Http(y/N): ").lower() == "y":
+                url = input_(
+                    "请输入Http服务器地址和端口（形如`https://127.0.0.1:1234`）: "
+                )
+                external_forwards.append(
+                    {
+                        "url": url,
+                    }
+                )
+
         return MatchConfig.model_validate(
             {
                 "chat_id": chat_id,
                 "rule": rule,
                 "rule_value": rule_value,
                 "from_user_ids": from_user_ids,
+                "always_ignore_me": always_ignore_me,
                 "default_send_text": default_send_text,
                 "ai_reply": ai_reply,
                 "ai_prompt": ai_prompt,
@@ -1048,6 +1091,7 @@ class UserMonitor(BaseUserWorker):
                 "forward_to_chat_id": forward_to_chat_id,
                 "push_via_server_chan": push_via_server_chan,
                 "server_chan_send_key": server_chan_send_key,
+                "external_forwards": external_forwards,
             }
         )
 
@@ -1072,11 +1116,58 @@ class UserMonitor(BaseUserWorker):
             i += 1
         return MonitorConfig(match_cfgs=match_cfgs)
 
+    @classmethod
+    async def udp_forward(cls, f: UDPForward, message: Message):
+        data = str(message).encode("utf-8")
+        loop = asyncio.get_running_loop()
+        transport, protocol = await loop.create_datagram_endpoint(
+            lambda: _UDPProtocol(), remote_addr=(f.host, f.port)
+        )
+        try:
+            transport.sendto(data)
+        finally:
+            transport.close()
+
+    @classmethod
+    async def http_api_callback(cls, f: HttpCallback, message: Message):
+        headers = f.headers or {}
+        headers.update({"Content-Type": "application/json"})
+        content = str(message).encode("utf-8")
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                str(f.url),
+                content=content,
+                headers=headers,
+                timeout=10,
+            )
+
+    async def forward_to_external(self, match_cfg: MatchConfig, message: Message):
+        if not match_cfg.external_forwards:
+            return
+        for forward in match_cfg.external_forwards:
+            self.log(f"转发消息至{forward}")
+            if isinstance(forward, UDPForward):
+                asyncio.create_task(
+                    self.udp_forward(
+                        forward,
+                        message,
+                    )
+                )
+            elif isinstance(forward, HttpCallback):
+                asyncio.create_task(
+                    self.http_api_callback(
+                        forward,
+                        message,
+                    )
+                )
+
     async def on_message(self, client, message: Message):
+        print(message)
         for match_cfg in self.config.match_cfgs:
             if not match_cfg.match(message):
                 continue
             self.log(f"匹配到监控项：{match_cfg}")
+            await self.forward_to_external(match_cfg, message)
             try:
                 send_text = await self.get_send_text(match_cfg, message)
                 if not send_text:
@@ -1129,3 +1220,19 @@ class UserMonitor(BaseUserWorker):
         async with self.app:
             self.log("开始监控...")
             await idle()
+
+
+class _UDPProtocol(asyncio.DatagramProtocol):
+    """内部使用的UDP协议处理类"""
+
+    def __init__(self):
+        self.transport = None
+
+    def connection_made(self, transport):
+        self.transport = transport
+
+    def datagram_received(self, data, addr):
+        pass  # 不需要处理接收的数据
+
+    def error_received(self, exc):
+        print(f"UDP error received: {exc}")
