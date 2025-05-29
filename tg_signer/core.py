@@ -27,7 +27,7 @@ from pyrogram import errors, filters
 from pyrogram.enums import ChatMembersFilter, ChatType
 from pyrogram.handlers import MessageHandler
 from pyrogram.methods.utilities.idle import idle
-from pyrogram.session import Session as BaseSession
+from pyrogram.session import Session
 from pyrogram.storage import MemoryStorage
 from pyrogram.types import (
     Chat,
@@ -70,9 +70,7 @@ print_to_user = print
 
 DICE_EMOJIS = ("🎲", "🎯", "🏀", "⚽", "🎳", "🎰")
 
-
-class Session(BaseSession):
-    START_TIMEOUT = 5
+Session.START_TIMEOUT = 5  # 原始超时时间为2秒，但一些代理访问会超时，所以这里调大一点
 
 
 class UserInput:
@@ -915,7 +913,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                     self.context.chat_messages[chat.chat_id].remove(message)
                     return
                 self.log(f"忽略消息: {readable_message(message)}")
-        self.log(f"等待超时: chat: {chat}, action: {action}", level="WARNING")
+        self.log(f"等待超时: \nchat: \n{chat} \naction: {action}", level="WARNING")
 
     async def request_callback_answer(
         self,

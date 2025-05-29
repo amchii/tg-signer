@@ -18,13 +18,14 @@ classifiers = [
     "Programming Language :: Python :: 3 :: Only"
 ]
 dependencies = [
-    "kurirogram",
+    "kurigram",
     "click",
     "pydantic",
     "openai",
     "croniter",
     "json_repair",
-    "typing-extensions"
+    "typing-extensions",
+    "httpx"
 ]
 
 [project.urls]
