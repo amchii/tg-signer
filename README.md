@@ -262,8 +262,13 @@ tg-signer monitor run my_monitor
 
 ### 版本变动日志
 
-#### 0.7.0
+#### 0.7.2
+- 支持将消息转发至外部端点，通过：
+  - UDP
+  - HTTP
+- 将kurirogram替换为kurigram
 
+#### 0.7.0
 - 支持每个聊天会话按序执行多个动作，动作类型：
   - 发送文本
   - 发送骰子
@@ -277,44 +282,35 @@ tg-signer monitor run my_monitor
 #### 0.6.5
 - 修复使用同一套配置运行多个账号时签到记录共用的问题
 
-
 #### 0.6.4
 - 增加对简单计算题的支持
 - 改进签到配置和消息处理
 
-
 #### 0.6.3
-
 - 兼容kurigram 2.1.38版本的破坏性变更
 > Remove coroutine param from run method [a7afa32](https://github.com/KurimuzonAkuma/pyrogram/commit/a7afa32df208333eecdf298b2696a2da507bde95)
 
 
 #### 0.6.2
-
 - 忽略签到时发送消息失败的聊天
 
 #### 0.6.1
-
 - 支持点击按钮文本后继续进行图片识别
 
 #### 0.6.0
-
 - Signer支持通过crontab定时
 - Monitor匹配规则添加`all`支持所有消息
 - Monitor支持匹配到消息后通过server酱推送
 - Signer新增`multi-run`用于使用一套配置同时运行多个账号
 
 #### 0.5.2
-
 - Monitor支持配置AI进行消息回复
 - 增加批量配置「Telegram自带的定时发送消息功能」的功能
 
 #### 0.5.1
-
 - 添加`import`和`export`命令用于导入导出配置
 
 #### 0.5.0
-
 - 根据配置的文本点击键盘
 - 调用AI识别图片点击键盘
 
