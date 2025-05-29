@@ -252,6 +252,13 @@ Continue? (y/N): n
 
 ### Changelog
 
+#### 0.7.2
+
+- Support forwarding messages to external endpoints via:
+  - UDP
+  - HTTP
+- Replaced kurirogram with kurigram
+
 #### 0.7.0
 
 - Support sequential actions per chat:

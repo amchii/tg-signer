@@ -1001,7 +1001,7 @@ class UserMonitor(BaseUserWorker[MonitorConfig]):
             from_user_ids = [
                 i if i.startswith("@") else int(i) for i in from_user_ids.split(",")
             ]
-        default_send_text = input_("默认发送文本: ") or None
+        default_send_text = input_("默认发送文本（不需要则回车）: ") or None
         ai_reply = False
         ai_prompt = None
         use_ai_reply = input_("是否使用AI进行回复(y/N): ") or "n"
@@ -1065,9 +1065,7 @@ class UserMonitor(BaseUserWorker[MonitorConfig]):
                 )
 
             if input_("是否需要转发到Http(y/N): ").lower() == "y":
-                url = input_(
-                    "请输入Http服务器地址和端口（形如`https://127.0.0.1:1234`）: "
-                )
+                url = input_("请输入Http地址（形如`http://127.0.0.1:1234`）: ")
                 external_forwards.append(
                     {
                         "url": url,
@@ -1160,7 +1158,6 @@ class UserMonitor(BaseUserWorker[MonitorConfig]):
                 )
 
     async def on_message(self, client, message: Message):
-        print(message)
         for match_cfg in self.config.match_cfgs:
             if not match_cfg.match(message):
                 continue
