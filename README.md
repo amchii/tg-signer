@@ -262,6 +262,92 @@ tg-signer monitor run my_monitor
     6. 提取发布文本的正则，例如 "参与关键词：「(.*?)」\n" ，注意用括号`(...)` 捕获要提取的文本，
        可以捕获第3点示例消息的关键词"我要抽奖"并自动发送
 
+3. 消息Message结构参考:
+
+```json
+{
+    "_": "Message",
+    "id": 2950,
+    "from_user": {
+        "_": "User",
+        "id": 123456789,
+        "is_self": false,
+        "is_contact": false,
+        "is_mutual_contact": false,
+        "is_deleted": false,
+        "is_bot": false,
+        "is_verified": false,
+        "is_restricted": false,
+        "is_scam": false,
+        "is_fake": false,
+        "is_support": false,
+        "is_premium": false,
+        "is_contact_require_premium": false,
+        "is_close_friend": false,
+        "is_stories_hidden": false,
+        "is_stories_unavailable": true,
+        "is_business_bot": false,
+        "first_name": "linux",
+        "status": "UserStatus.ONLINE",
+        "next_offline_date": "2025-05-30 11:52:40",
+        "username": "linuxdo",
+        "dc_id": 5,
+        "phone_number": "*********",
+        "photo": {
+            "_": "ChatPhoto",
+            "small_file_id": "AQADBQADqqcxG6hqrTMAEAIAA6hqrTMABLkwVDcqzBjAAAQeBA",
+            "small_photo_unique_id": "AgADqqcxG6hqrTM",
+            "big_file_id": "AQADBQADqqcxG6hqrTMAEAMAA6hqrTMABLkwVDcqzBjAAAQeBA",
+            "big_photo_unique_id": "AgADqqcxG6hqrTM",
+            "has_animation": false,
+            "is_personal": false
+        },
+        "added_to_attachment_menu": false,
+        "inline_need_location": false,
+        "can_be_edited": false,
+        "can_be_added_to_attachment_menu": false,
+        "can_join_groups": false,
+        "can_read_all_group_messages": false,
+        "has_main_web_app": false
+    },
+    "date": "2025-05-30 11:47:46",
+    "chat": {
+        "_": "Chat",
+        "id": -52737131599,
+        "type": "ChatType.GROUP",
+        "is_creator": true,
+        "is_deactivated": false,
+        "is_call_active": false,
+        "is_call_not_empty": false,
+        "title": "测试组",
+        "has_protected_content": false,
+        "members_count": 4,
+        "permissions": {
+            "_": "ChatPermissions",
+            "can_send_messages": true,
+            "can_send_media_messages": true,
+            "can_send_other_messages": true,
+            "can_send_polls": true,
+            "can_add_web_page_previews": true,
+            "can_change_info": true,
+            "can_invite_users": true,
+            "can_pin_messages": true,
+            "can_manage_topics": true
+        }
+    },
+    "from_offline": false,
+    "show_caption_above_media": false,
+    "mentioned": false,
+    "scheduled": false,
+    "from_scheduled": false,
+    "edit_hidden": false,
+    "has_protected_content": false,
+    "text": "test, 测试",
+    "video_processing_pending": false,
+    "outgoing": false
+}
+```
+
 #### 示例运行输出：
 
 ```
