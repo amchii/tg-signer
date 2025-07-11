@@ -710,6 +710,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         self.log(f"开始签到: \n{chat}")
         for action in chat.actions:
             await self.wait_for(chat, action)
+            await asyncio.sleep(chat.action_interval)
 
     async def run(
         self, num_of_dialogs=20, only_once: bool = False, force_rerun: bool = False

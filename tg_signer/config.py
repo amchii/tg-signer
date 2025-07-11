@@ -229,6 +229,7 @@ class SignChatV3(BaseJSONConfig):
     name: Optional[str] = None
     delete_after: Optional[int] = None
     actions: List[ActionT]
+    action_interval: float = 1  # actions的间隔时间，单位秒
 
     def __repr__(self) -> str:
         return (

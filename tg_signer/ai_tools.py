@@ -53,6 +53,7 @@ option字段表示你选择的选项。
             ],
         },
     ]
+    # noinspection PyTypeChecker
     completion = await client.chat.completions.create(
         messages=messages,
         model=model,
@@ -75,6 +76,7 @@ async def calculate_problem(
     model = os.environ.get("OPENAI_MODEL", default_model)
     client = client or get_openai_client()
     text = f"问题是: {query}\n\n只需要给出答案，不要解释，不要输出任何其他内容。The answer is:"
+    # noinspection PyTypeChecker
     completion = await client.chat.completions.create(
         messages=[
             {"role": "system", "content": sys_prompt},
@@ -102,6 +104,7 @@ async def get_reply(
         },
         {"role": "user", "content": f"{query}"},
     ]
+    # noinspection PyTypeChecker
     completion = await client.chat.completions.create(
         messages=messages,
         model=model,
