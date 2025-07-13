@@ -622,7 +622,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         actions = self._ask_actions(input_)
         delete_after = (
             input_(
-                "等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
+                "等待N秒后删除消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: "
             )
             or None
         )
@@ -641,23 +641,21 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         i = 1
         print_to_user(f"开始配置任务<{self.task_name}>\n")
         while True:
-            print_to_user(f"第{i}个签到: ")
+            print_to_user(f"第{i}个任务: ")
             try:
                 chat = self.ask_one()
                 print_to_user(chat)
-                print_to_user(f"第{i}个签到配置成功\n")
+                print_to_user(f"第{i}个任务配置成功\n")
                 chats.append(chat)
             except Exception as e:
                 print_to_user(e)
                 print_to_user("配置失败")
                 i -= 1
-            continue_ = input("继续配置签到？(y/N)：")
+            continue_ = input("继续配置任务？(y/N)：")
             if continue_.strip().lower() != "y":
                 break
             i += 1
-        sign_at_prompt = (
-            "每日签到时间（time或crontab表达式，如'06:00:00'或'0 6 * * *'）: "
-        )
+        sign_at_prompt = "签到时间（time或crontab表达式，如'06:00:00'或'0 6 * * *'）: "
         sign_at_str = input(sign_at_prompt) or "06:00:00"
         while not (sign_at := self._validate_sign_at(sign_at_str)):
             print_to_user("请输入正确的时间格式")
@@ -707,7 +705,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         self,
         chat: SignChatV3,
     ):
-        self.log(f"开始签到: \n{chat}")
+        self.log(f"开始执行: \n{chat}")
         for action in chat.actions:
             await self.wait_for(chat, action)
             await asyncio.sleep(chat.action_interval)
@@ -721,6 +719,35 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         config = self.load_config(self.cfg_cls)
         sign_record = self.load_sign_record()
         chat_ids = [c.chat_id for c in config.chats]
+
+        async def sign_once():
+            for chat in config.chats:
+                self.context.sign_chats[chat.chat_id].append(chat)
+                try:
+                    await self.sign(chat)
+                except errors.BadRequest:
+                    continue
+
+                self.context.chat_messages[chat.chat_id].clear()
+                await asyncio.sleep(config.sign_interval)
+            sign_record[str(now.date())] = now.isoformat()
+            with open(self.sign_record_file, "w", encoding="utf-8") as fp:
+                json.dump(sign_record, fp)
+
+        def need_sign(last_date_str):
+            if force_rerun:
+                return True
+            if last_date_str not in sign_record:
+                return True
+            _last_sign_at = datetime.fromisoformat(sign_record[last_date_str])
+            self.log(f"上次执行时间: {_last_sign_at}")
+            _cron_it = croniter(self._validate_sign_at(config.sign_at), _last_sign_at)
+            _next_run: datetime = _cron_it.next(datetime)
+            if _next_run > now:
+                self.log("当前未到下次执行时间，无需执行")
+                return False
+            return True
+
         while True:
             self.log(f"为以下Chat添加消息回调处理函数：{chat_ids}")
             self.app.add_handler(
@@ -732,25 +759,8 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                     self.log(f"当前时间: {now}")
                     now_date_str = str(now.date())
                     self.context = self.ensure_ctx()
-                    if now_date_str not in sign_record or force_rerun:
-                        for chat in config.chats:
-                            self.context.sign_chats[chat.chat_id].append(chat)
-                            try:
-                                await self.sign(chat)
-                            except errors.BadRequest:
-                                continue
-
-                            self.context.chat_messages[chat.chat_id].clear()
-                            await asyncio.sleep(config.sign_interval)
-                        sign_record[now_date_str] = now.isoformat()
-                        with open(self.sign_record_file, "w", encoding="utf-8") as fp:
-                            json.dump(sign_record, fp)
-                        self.log("Done")
-
-                    else:
-                        print_to_user(
-                            f"当前任务今日已签到，签到时间: {sign_record[now_date_str]}"
-                        )
+                    if need_sign(now_date_str):
+                        await sign_once()
 
             except (OSError, errors.Unauthorized) as e:
                 logger.exception(e)

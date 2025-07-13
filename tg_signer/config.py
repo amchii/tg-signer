@@ -236,6 +236,7 @@ class SignChatV3(BaseJSONConfig):
             f"SignChatV3(chat_id={self.chat_id}, "
             f"delete_after={self.delete_after}, "
             f"actions=[{len(self.actions)} actions])"
+            f"action_interval={self.action_interval}"
         )
 
     def __str__(self) -> str:
