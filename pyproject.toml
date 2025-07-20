@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3 :: Only"
 ]
 dependencies = [
-    "kurigram",
+    "kurigram<=2.2.7",
     "click",
     "pydantic",
     "openai",

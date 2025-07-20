@@ -309,7 +309,7 @@ class BaseUserWorker(Generic[ConfigT]):
         self._config = value
 
     def log(self, msg, level: str = "INFO", **kwargs):
-        msg = f"{self._account}: {msg}"
+        msg = f"账户「{self._account}」: {msg}"
         if level.upper() == "INFO":
             logger.info(msg, **kwargs)
         elif level.upper() == "WARNING":
@@ -725,7 +725,9 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                 self.context.sign_chats[chat.chat_id].append(chat)
                 try:
                     await self.sign(chat)
-                except errors.BadRequest:
+                except errors.RPCError as _e:
+                    self.log(f"签到失败: {_e} \nchat: \n{chat}")
+                    logger.warning(_e, exc_info=True)
                     continue
 
                 self.context.chat_messages[chat.chat_id].clear()
