@@ -14,7 +14,7 @@ from typing import (
 )
 
 from pydantic import AnyHttpUrl, BaseModel, ValidationError
-from pyrogram.types import Message
+from pyrogram.types import Chat, Message
 from typing_extensions import Self, TypeAlias
 
 
@@ -413,8 +413,15 @@ class MatchConfig(BaseJSONConfig):
             return bool(re.search(rule_value, text, flags=flags))
         return False
 
+    def match_chat(self, chat: "Chat"):
+        if isinstance(self.chat_id, int):
+            return self.chat_id == chat.id
+        return self.chat_id == chat.username
+
     def match(self, message: "Message"):
-        return bool(self.match_user(message) and self.match_text(message.text))
+        return self.match_chat(message.chat) and bool(
+            self.match_user(message) and self.match_text(message.text)
+        )
 
     def get_send_text(self, text: str) -> str:
         send_text = self.default_send_text
