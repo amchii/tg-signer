@@ -365,6 +365,9 @@ tg-signer monitor run my_monitor
 
 ### 版本变动日志
 
+#### 0.7.6
+- fix: 监控多个聊天时消息转发至每个聊天 (#55)
+
 #### 0.7.5
 - 捕获并记录执行任务期间的所有RPC错误
 - bump kurigram version to 2.2.7
