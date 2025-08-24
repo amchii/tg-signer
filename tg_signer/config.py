@@ -48,7 +48,7 @@ def pad_text_to_width(text: str, target_width: int, align: str = "left") -> str:
 
 
 class BaseJSONConfig(BaseModel):
-    version: ClassVar[str | int] = 0
+    version: ClassVar[Union[str, int]] = 0
     olds: ClassVar[Optional[List[Type["BaseJSONConfig"]]]] = None
     is_current: ClassVar[bool] = False
 

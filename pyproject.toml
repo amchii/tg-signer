@@ -9,8 +9,7 @@ description = "Telegram signer"
 authors = [
     { name = "Amchii", email = "finethankuandyou@gmail.com" }
 ]
-license = "BSD-3-Clause"
-license-files = ["LICENSE*"]
+license = { text = "BSD-3-Clause" }
 readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [
