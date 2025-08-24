@@ -48,7 +48,7 @@ def pad_text_to_width(text: str, target_width: int, align: str = "left") -> str:
 
 
 class BaseJSONConfig(BaseModel):
-    version: ClassVar[str] = 0
+    version: ClassVar[str | int] = 0
     olds: ClassVar[Optional[List[Type["BaseJSONConfig"]]]] = None
     is_current: ClassVar[bool] = False
 
@@ -74,6 +74,7 @@ class BaseJSONConfig(BaseModel):
         for old in cls.olds or []:
             if old_inst := old.valid(d):
                 return old.to_current(old_inst), True
+        return None
 
 
 class SignConfigV1(BaseJSONConfig):
@@ -411,7 +412,6 @@ class MatchConfig(BaseJSONConfig):
         elif self.rule == "regex":
             flags = re.IGNORECASE if self.ignore_case else 0
             return bool(re.search(rule_value, text, flags=flags))
-        return False
 
     def match_chat(self, chat: "Chat"):
         if isinstance(self.chat_id, int):

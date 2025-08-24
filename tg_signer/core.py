@@ -192,6 +192,7 @@ def get_proxy(proxy: str = None):
             "username": r.username,
             "password": r.password,
         }
+    return None
 
 
 def get_client(
@@ -403,7 +404,7 @@ class BaseUserWorker(Generic[ConfigT]):
         is_authorized = await self.app.connect()
         if not is_authorized:
             await self.app.storage.delete()
-            return
+            return None
         return await self.app.log_out()
 
     async def send_message(
@@ -924,9 +925,10 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                     self.context.waiter.sub(message.chat.id)
                     # 这里移除了该消息，消息列表不可再迭代
                     self.context.chat_messages[chat.chat_id].remove(message)
-                    return
+                    return None
                 self.log(f"忽略消息: {readable_message(message)}")
         self.log(f"等待超时: \nchat: \n{chat} \naction: {action}", level="WARNING")
+        return None
 
     async def request_callback_answer(
         self,
