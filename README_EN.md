@@ -92,6 +92,17 @@ tg-signer monitor run  # Configure and run personal/group/channel message monito
 tg-signer multi-run -a account_a -a account_b same_task  # Run 'account_a' and 'account_b' with 'same_task' config
 ```
 
+### Run in the background
+
+To run a task in the background without affecting other foreground bash operations, add `space + &` at the end of the command.
+
+Example：
+
+```sh
+tg-signer run my_sign &
+```
+
+
 ### Proxy Configuration (if needed)
 
 `tg-signer` doesn't read system proxy. Use `TG_PROXY` env var or `--proxy` parameter:

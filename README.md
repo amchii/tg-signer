@@ -28,7 +28,7 @@ pip install "tg-signer[speedup]"
 
 #### Docker
 
-未上传直接使用的镜像，可以自行build镜像，见[docker](./docker) 目录下的Dockerfile和 [README](./docker/README.md) 。
+未上传直接使用的镜像，可以自行build镜像，见 [docker](./docker) 目录下的Dockerfile和 [README](./docker/README.md) 。
 
 ### 使用方法
 
@@ -90,6 +90,16 @@ tg-signer list-members --chat_id -1001680975844 --admin  # 列出频道的管理
 tg-signer schedule-messages --crontab '0 0 * * *' --next-times 10 -- -1001680975844 你好  # 在未来10天的每天0点向'-1001680975844'发送消息
 tg-signer monitor run  # 配置个人、群组、频道消息监控与自动回复
 tg-signer multi-run -a account_a -a account_b same_task  # 使用'same_task'的配置同时运行'account_a'和'account_b'两个账号
+```
+
+### 后台运行
+
+如果想在后台运行任务，不影响前台bash其他操作，请在命令末尾加上 `空格+&`。
+
+例如：
+
+```sh
+tg-signer run my_sign &
 ```
 
 ### 配置代理（如有需要）

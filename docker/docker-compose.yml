@@ -1,0 +1,20 @@
+version: "3"
+
+networks:
+  tg_host:
+    external: false
+
+services:
+  tg-signer:
+    build:
+      context: .
+      dockerfile: CN.Dockerfile
+    container_name: tg-signer
+    command: ["/bin/bash", "start.sh"]
+    volumes:
+      - $PWD:/opt/tg-signer
+    environment:
+      - TG_PROXY=socks5://172.17.0.1:7890
+    networks:
+      - tg_host
+    restart: unless-stopped
