@@ -10,12 +10,6 @@ sleep infinity
 
 # 配置完成后取消注释
 # tg-signer run mytasks
-
-# 如需同时运行多个任务
-# tg-signer run mytask1 &
-# tg-signer run mytask2 &
-# tg-signer run mytask3
-
 ```
 
 ## 使用Dockerfile

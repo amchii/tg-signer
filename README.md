@@ -92,16 +92,6 @@ tg-signer monitor run  # 配置个人、群组、频道消息监控与自动回�
 tg-signer multi-run -a account_a -a account_b same_task  # 使用'same_task'的配置同时运行'account_a'和'account_b'两个账号
 ```
 
-### 后台运行
-
-如果想在后台运行任务，不影响前台bash其他操作，请在命令末尾加上 `空格+&`。
-
-例如：
-
-```sh
-tg-signer run my_sign &
-```
-
 ### 配置代理（如有需要）
 
 `tg-signer`不读取系统代理，可以使用环境变量 `TG_PROXY`或命令参数`--proxy`进行配置
