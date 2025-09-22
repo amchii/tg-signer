@@ -138,18 +138,50 @@ def readable_chat(chat: Chat):
     return f"id: {chat.id}, username: {none_or_dash(chat.username)}, title: {none_or_dash(chat.title)}, type: {type_}, name: {none_or_dash(chat.first_name)}"
 
 
+_CLIENT_INSTANCES: dict[str, "Client"] = {}
+
+# reference counts and async locks for shared client lifecycle management
+# Keyed by account name. Use asyncio locks to serialize start/stop operations
+# so multiple coroutines in the same process can safely share one Client.
+_CLIENT_REFS: defaultdict[str, int] = defaultdict(int)
+_CLIENT_ASYNC_LOCKS: dict[str, asyncio.Lock] = {}
+
+
 class Client(BaseClient):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, name: str, *args, **kwargs):
+        key = kwargs.pop("key", None)
+        super().__init__(name, *args, **kwargs)
+        self.key = key or str(self.session_string_file.resolve())
         if self.in_memory and not self.session_string:
             self.load_session_string()
             self.storage = MemoryStorage(self.name, self.session_string)
 
     async def __aenter__(self):
-        try:
-            return await self.start()
-        except ConnectionError:
-            pass
+        lock = _CLIENT_ASYNC_LOCKS.get(self.key)
+        if lock is None:
+            lock = asyncio.Lock()
+            _CLIENT_ASYNC_LOCKS[self.key] = lock
+        async with lock:
+            _CLIENT_REFS[self.key] += 1
+            if _CLIENT_REFS[self.key] == 1:
+                try:
+                    await self.start()
+                except ConnectionError:
+                    pass
+            return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        lock = _CLIENT_ASYNC_LOCKS.get(self.key)
+        if lock is None:
+            return
+        async with lock:
+            _CLIENT_REFS[self.key] -= 1
+            if _CLIENT_REFS[self.key] == 0:
+                try:
+                    await self.stop()
+                except ConnectionError:
+                    pass
+                _CLIENT_INSTANCES.pop(self.key, None)
 
     @property
     def session_string_file(self):
@@ -205,16 +237,21 @@ def get_client(
 ):
     proxy = proxy or get_proxy()
     api_id, api_hash = get_api_config()
-    return Client(
+    key = str(pathlib.Path(workdir).joinpath(name).resolve())
+    if key in _CLIENT_INSTANCES:
+        return _CLIENT_INSTANCES[key]
+    client = Client(
         name,
-        api_id,
-        api_hash,
+        api_id=api_id,
+        api_hash=api_hash,
         proxy=proxy,
         workdir=workdir,
         session_string=session_string,
         in_memory=in_memory,
         **kwargs,
     )
+    _CLIENT_INSTANCES[key] = client
+    return client
 
 
 def get_now():
@@ -313,7 +350,7 @@ class BaseUserWorker(Generic[ConfigT]):
         self._config = value
 
     def log(self, msg, level: str = "INFO", **kwargs):
-        msg = f"账户「{self._account}」: {msg}"
+        msg = f"账户「{self._account}」- 任务「{self.task_name}」: {msg}"
         if level.upper() == "INFO":
             logger.info(msg, **kwargs)
         elif level.upper() == "WARNING":

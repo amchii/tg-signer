@@ -202,7 +202,7 @@ def logout(obj):
 
 
 @tg_signer.command(help="根据任务配置运行签到")
-@click.argument("task_name", nargs=1, default="my_sign")
+@click.argument("task_names", nargs=-1)
 @click.option(
     "--num-of-dialogs",
     "-n",
@@ -212,9 +212,16 @@ def logout(obj):
     help="获取最近N个对话, 请确保想要签到的对话在最近N个对话内",
 )
 @click.pass_obj
-def run(obj, task_name, num_of_dialogs):
-    signer = get_signer(task_name, obj)
-    signer.app_run(signer.run(num_of_dialogs))
+def run(obj, task_names, num_of_dialogs):
+    if len(task_names) < 1:
+        raise click.UsageError("At least one task name is required")
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    coros = []
+    for task_name in task_names:
+        signer = get_signer(task_name, obj, loop=loop)
+        coros.append(signer.run(num_of_dialogs))
+    loop.run_until_complete(asyncio.gather(*coros))
 
 
 @tg_signer.command(help="运行一次签到任务，即使该签到任务今日已执行过")
@@ -426,6 +433,7 @@ def multi_run(obj, accounts, task_name, num_of_dialogs):
     logger = logging.getLogger("tg-signer")
     logger.info(f"开始使用一套配置({task_name})同时运行多个账号..")
     loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     coros = []
     for account in accounts:
         obj["account"] = account
