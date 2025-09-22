@@ -412,6 +412,7 @@ class MatchConfig(BaseJSONConfig):
         elif self.rule == "regex":
             flags = re.IGNORECASE if self.ignore_case else 0
             return bool(re.search(rule_value, text, flags=flags))
+        return False
 
     def match_chat(self, chat: "Chat"):
         if isinstance(self.chat_id, int):

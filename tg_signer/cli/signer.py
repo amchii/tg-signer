@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import Optional
 
 import click
 from click import Context, HelpFormatter
@@ -39,7 +40,9 @@ class AliasedGroup(click.Group):
                 formatter.write_text(f"{k} -> {v}")
 
 
-def get_signer(task_name, ctx_obj: dict):
+def get_signer(
+    task_name, ctx_obj: dict, loop: Optional[asyncio.AbstractEventLoop] = None
+):
     signer = UserSigner(
         task_name=task_name,
         account=ctx_obj["account"],
@@ -48,6 +51,7 @@ def get_signer(task_name, ctx_obj: dict):
         workdir=ctx_obj["workdir"],
         session_string=ctx_obj["session_string"],
         in_memory=ctx_obj["in_memory"],
+        loop=loop,
     )
     return signer
 
@@ -421,10 +425,10 @@ def list_schedule_messages(obj, chat_id):
 def multi_run(obj, accounts, task_name, num_of_dialogs):
     logger = logging.getLogger("tg-signer")
     logger.info(f"开始使用一套配置({task_name})同时运行多个账号..")
+    loop = asyncio.new_event_loop()
     coros = []
     for account in accounts:
         obj["account"] = account
-        signer = get_signer(task_name, obj)
+        signer = get_signer(task_name, obj, loop=loop)
         coros.append(signer.run(num_of_dialogs))
-    loop = asyncio.get_event_loop()
     loop.run_until_complete(asyncio.gather(*coros))

@@ -245,6 +245,8 @@ class BaseUserWorker(Generic[ConfigT]):
         workdir=None,
         session_string: str = None,
         in_memory: bool = False,
+        *,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
     ):
         self.task_name = task_name or "my_task"
         self._session_dir = pathlib.Path(session_dir)
@@ -258,7 +260,9 @@ class BaseUserWorker(Generic[ConfigT]):
             workdir=self._session_dir,
             session_string=session_string,
             in_memory=in_memory,
+            loop=loop,
         )
+        self.loop = self.app.loop
         self.user: Optional[User] = None
         self._config = None
         self.context = self.ensure_ctx()
@@ -268,8 +272,7 @@ class BaseUserWorker(Generic[ConfigT]):
 
     def app_run(self, coroutine=None):
         if coroutine is not None:
-            loop = asyncio.get_event_loop()
-            run = loop.run_until_complete
+            run = self.loop.run_until_complete
             run(coroutine)
         else:
             self.app.run()
