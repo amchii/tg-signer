@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS builder
+FROM python:3.12-slim-bookworm AS builder
 
 RUN echo "Types: deb\n\
 URIs: https://mirrors.tuna.tsinghua.edu.cn/debian\n\
