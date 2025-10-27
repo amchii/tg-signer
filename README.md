@@ -74,6 +74,7 @@ Commands:
   run-once                运行一次签到任务，即使该签到任务今日已执行过
   schedule-messages       批量配置Telegram自带的定时发送消息功能
   send-text               发送一次消息, 请确保当前会话已经"见过"该`chat_id`
+  webui                  启动图形化配置界面
   version                 Show version
 ```
 
@@ -90,7 +91,12 @@ tg-signer list-members --chat_id -1001680975844 --admin  # 列出频道的管理
 tg-signer schedule-messages --crontab '0 0 * * *' --next-times 10 -- -1001680975844 你好  # 在未来10天的每天0点向'-1001680975844'发送消息
 tg-signer monitor run  # 配置个人、群组、频道消息监控与自动回复
 tg-signer multi-run -a account_a -a account_b same_task  # 使用'same_task'的配置同时运行'account_a'和'account_b'两个账号
+tg-signer webui --host 0.0.0.0 --port 8080  # 在浏览器中打开策略配置界面
 ```
+
+### Web UI
+
+使用 `tg-signer webui` 可启动浏览器版配置界面，能够在图形化页面中创建、编辑签到策略并即时保存至本地配置文件，界面配色与交互参考 Telegram Web。默认监听 `127.0.0.1:8000`，可通过 `--host`、`--port` 参数调整。
 
 ### 配置代理（如有需要）
 

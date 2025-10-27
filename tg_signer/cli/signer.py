@@ -359,6 +359,21 @@ def import_(obj, task_name: str, file: str = None):
     signer.import_(data)
 
 
+@tg_signer.command(help="启动图形化配置界面")
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", default=8000, show_default=True, type=int)
+@click.option("--reload/--no-reload", "reload", default=False, show_default=True)
+@click.pass_obj
+def webui(obj, host: str, port: int, reload: bool):
+    from tg_signer.webui import WebUISettings, create_app
+
+    import uvicorn
+
+    settings = WebUISettings.from_cli_context(obj)
+    app = create_app(settings)
+    uvicorn.run(app, host=host, port=port, reload=reload)
+
+
 @tg_signer.command(help="批量配置Telegram自带的定时发送消息功能")
 @click.argument(
     "chat_id",

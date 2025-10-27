@@ -74,6 +74,7 @@ Commands:
   run-once                Run check-in task once (even if already executed today)
   schedule-messages       Batch configure Telegram's native scheduled messages
   send-text               Send one message (ensure session has "seen" the `chat_id`)
+  webui                   Launch the graphical configuration interface
   version                 Show version
 ```
 
@@ -90,7 +91,12 @@ tg-signer list-members --chat_id -1001680975844 --admin  # List channel admins
 tg-signer schedule-messages --crontab '0 0 * * *' --next-times 10 -- -1001680975844 hello  # Send "hello" to '-1001680975844' at 00:00 daily for next 10 days
 tg-signer monitor run  # Configure and run personal/group/channel message monitoring
 tg-signer multi-run -a account_a -a account_b same_task  # Run 'account_a' and 'account_b' with 'same_task' config
+tg-signer webui --host 0.0.0.0 --port 8080  # Open the visual strategy editor in a browser
 ```
+
+### Web UI
+
+Run `tg-signer webui` to start the browser-based configuration interface. The page mirrors Telegram Web's flat green gradient style and lets you create or edit check-in strategies with live validation. The service listens on `127.0.0.1:8000` by default and can be customized with `--host` and `--port` parameters.
 
 ### Proxy Configuration (if needed)
 

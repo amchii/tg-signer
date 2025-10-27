@@ -1,0 +1,333 @@
+:root {
+  color-scheme: light;
+  --gradient-start: #1fc48c;
+  --gradient-end: #0b8f62;
+  --surface: rgba(255, 255, 255, 0.88);
+  --surface-strong: rgba(255, 255, 255, 0.96);
+  --border-color: rgba(12, 98, 64, 0.16);
+  --text-primary: #0f3624;
+  --text-muted: rgba(15, 54, 36, 0.7);
+  --text-invert: #f4fff6;
+  --accent: #0aa56c;
+  --accent-strong: #07805a;
+  --shadow-soft: 0 8px 24px rgba(12, 82, 56, 0.12);
+  font-family: "Inter", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: linear-gradient(132deg, var(--gradient-start), var(--gradient-end));
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+.app-shell {
+  display: flex;
+  height: 100vh;
+  max-height: 100vh;
+  backdrop-filter: blur(18px);
+}
+
+.sidebar {
+  width: 280px;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0));
+  border-right: 1px solid var(--border-color);
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.brand {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.task-empty {
+  padding: 12px 10px;
+  border-radius: 3px;
+  border: 1px dashed rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.85);
+  text-align: center;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.task-item:hover,
+.task-item:focus {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.35);
+  outline: none;
+}
+
+.task-item.active {
+  background: var(--surface);
+  border-color: rgba(12, 98, 64, 0.32);
+}
+
+.workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 28px 36px;
+  gap: 24px;
+  background: var(--surface-strong);
+}
+
+.workspace-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.workspace-head h1 {
+  margin: 0 0 4px;
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.workspace-head p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 15px;
+}
+
+.workspace-actions {
+  display: flex;
+  gap: 10px;
+}
+
+button {
+  font: inherit;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  background: rgba(255, 255, 255, 0.4);
+  color: var(--text-primary);
+}
+
+button.primary {
+  background: linear-gradient(132deg, var(--accent), var(--accent-strong));
+  border-color: rgba(255, 255, 255, 0.4);
+  color: var(--text-invert);
+}
+
+button.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.ghost {
+  background: transparent;
+  border-color: rgba(12, 98, 64, 0.4);
+  color: var(--accent-strong);
+}
+
+button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.7);
+  outline-offset: 1px;
+}
+
+.status-banner {
+  padding: 10px 14px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  font-size: 14px;
+  display: none;
+}
+
+.status-banner.hidden {
+  display: none;
+}
+
+.status-banner.success {
+  display: block;
+  background: rgba(12, 132, 88, 0.12);
+  border-color: rgba(12, 132, 88, 0.32);
+  color: var(--accent-strong);
+}
+
+.status-banner.error {
+  display: block;
+  background: rgba(204, 57, 57, 0.12);
+  border-color: rgba(204, 57, 57, 0.4);
+  color: #992626;
+}
+
+.editor {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 12px;
+}
+
+.empty-state {
+  max-width: 480px;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 24px;
+  border-radius: 3px;
+  line-height: 1.6;
+  box-shadow: var(--shadow-soft);
+}
+
+.form-section {
+  margin-bottom: 28px;
+}
+
+.form-section h2 {
+  font-size: 18px;
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.field input,
+.field select,
+.field textarea {
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 3px;
+  border: 1px solid rgba(12, 98, 64, 0.28);
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--text-primary);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--accent-strong);
+  outline: none;
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.chat-editor {
+  border-top: 1px solid rgba(12, 98, 64, 0.18);
+  padding-top: 18px;
+  margin-top: 18px;
+}
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.chat-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.chat-editor h4 {
+  margin: 12px 0 8px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.action-row {
+  display: grid;
+  grid-template-columns: 160px 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.action-row .field {
+  margin: 0;
+}
+
+.action-row button {
+  padding: 6px 10px;
+}
+
+.inline-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+@media (max-width: 960px) {
+  .app-shell {
+    flex-direction: column;
+  }
+  .sidebar {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    padding: 16px;
+    overflow-x: auto;
+  }
+  .workspace {
+    padding: 20px;
+  }
+  .workspace-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

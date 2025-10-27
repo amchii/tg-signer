@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>tg-signer Web UI</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-head">
+          <div class="brand">tg-signer</div>
+          <button id="create-task" class="primary">新建策略</button>
+        </div>
+        <div id="task-search" class="search-box" hidden>
+          <input type="search" placeholder="搜索策略" />
+        </div>
+        <nav id="task-list" class="task-list" aria-label="策略列表"></nav>
+      </aside>
+      <main class="workspace" aria-live="polite">
+        <header class="workspace-head">
+          <div>
+            <h1 id="workspace-title">策略详情</h1>
+            <p id="workspace-subtitle">选择或新建一个策略，开始可视化配置流程</p>
+          </div>
+          <div class="workspace-actions">
+            <button id="save-task" class="primary" disabled>保存</button>
+            <button id="delete-task" class="ghost" disabled>删除</button>
+          </div>
+        </header>
+        <section id="status-area" class="status-banner hidden" role="status"></section>
+        <section id="editor" class="editor">
+          <div id="empty-state" class="empty-state">
+            <h2>欢迎使用 tg-signer Web UI</h2>
+            <p>
+              通过左侧的「新建策略」按钮创建一个签到策略，或选择现有策略进行编辑。
+            </p>
+            <p>
+              配置完成后点击右上角的保存按钮即可同步到本地配置文件，随后仍可通过 CLI 运行。
+            </p>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/static/app.js"></script>
+  </body>
+</html>

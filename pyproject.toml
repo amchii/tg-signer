@@ -24,7 +24,9 @@ dependencies = [
     "croniter",
     "json_repair",
     "typing-extensions",
-    "httpx"
+    "httpx",
+    "fastapi",
+    "uvicorn"
 ]
 
 [project.urls]
