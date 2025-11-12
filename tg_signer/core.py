@@ -632,15 +632,15 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
     ) -> List[ActionT]:
         print_to_user(f"{input_.index_str}开始配置<动作>，请按照实际签到顺序配置。")
         available_actions = available_actions or list(SupportAction)
-        for action in available_actions:
-            print_to_user(f"  {action.value}: {action.desc}")
-        print_to_user()
         actions = []
         print_openai_prompt = False
         while True:
             try:
                 local_input_ = UserInput()
                 print_to_user(f"第{len(actions) + 1}个动作: ")
+                for action in available_actions:
+                    print_to_user(f"  {action.value}: {action.desc}")
+                print_to_user()
                 action_str = local_input_("输入对应的数字选择动作: ").strip()
                 action = SupportAction(int(action_str))
                 if action not in available_actions:
@@ -688,9 +688,8 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                 print_to_user(f"Model: {existing_config.get('model', 'gpt-4o')}")
                 use_existing = input_("是否使用已保存的配置？(Y/n): ").strip().lower()
                 if use_existing != "n":
-                    input_.incr()
                     return actions
-            
+
             # Prompt for OpenAI configuration
             print_to_user("需要配置OpenAI API以使用大模型功能。")
             api_key = input_("请输入 OPENAI_API_KEY: ").strip()
