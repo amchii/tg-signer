@@ -265,6 +265,33 @@ def make_dirs(path: pathlib.Path, exist_ok=True):
     return path
 
 
+def get_openai_config_file(workdir: pathlib.Path) -> pathlib.Path:
+    return workdir / "openai_config.json"
+
+
+def load_openai_config(workdir: pathlib.Path) -> dict:
+    config_file = get_openai_config_file(workdir)
+    if config_file.exists():
+        try:
+            with open(config_file, "r", encoding="utf-8") as fp:
+                return json.load(fp)
+        except (json.JSONDecodeError, IOError):
+            return {}
+    return {}
+
+
+def save_openai_config(workdir: pathlib.Path, api_key: str, base_url: str, model: str):
+    config_file = get_openai_config_file(workdir)
+    make_dirs(config_file.parent)
+    config = {
+        "api_key": api_key,
+        "base_url": base_url,
+        "model": model,
+    }
+    with open(config_file, "w", encoding="utf-8") as fp:
+        json.dump(config, fp, ensure_ascii=False, indent=2)
+
+
 ConfigT = TypeVar("ConfigT", bound=BaseJSONConfig)
 
 
@@ -652,7 +679,36 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                 print_to_user("错误: ")
                 print_to_user(e)
         if print_openai_prompt:
-            print_to_user(OPENAI_USE_PROMPT)
+            # Check if OpenAI config already exists
+            existing_config = load_openai_config(self.workdir)
+            if existing_config.get("api_key") and existing_config.get("base_url"):
+                print_to_user("检测到已保存的OpenAI配置，将使用已保存的配置。")
+                print_to_user(f"API Key: {existing_config.get('api_key', '')[:10]}...")
+                print_to_user(f"Base URL: {existing_config.get('base_url', '')}")
+                print_to_user(f"Model: {existing_config.get('model', 'gpt-4o')}")
+                use_existing = input_("是否使用已保存的配置？(Y/n): ").strip().lower()
+                if use_existing != "n":
+                    input_.incr()
+                    return actions
+            
+            # Prompt for OpenAI configuration
+            print_to_user("需要配置OpenAI API以使用大模型功能。")
+            api_key = input_("请输入 OPENAI_API_KEY: ").strip()
+            while not api_key:
+                print_to_user("API Key不能为空！")
+                api_key = input_("请输入 OPENAI_API_KEY: ").strip()
+            
+            base_url = input_("请输入 OPENAI_BASE_URL (可选，直接回车使用默认): ").strip()
+            if not base_url:
+                base_url = "https://api.openai.com/v1"
+            
+            model = input_("请输入 OPENAI_MODEL (可选，直接回车使用默认 'gpt-4o'): ").strip()
+            if not model:
+                model = "gpt-4o"
+            
+            # Save the configuration
+            save_openai_config(self.workdir, api_key, base_url, model)
+            print_to_user("OpenAI配置已保存。")
         input_.incr()
         return actions
 
@@ -883,12 +939,12 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
     ):
         if message.text:
             self.log("检测到文本回复，尝试调用大模型进行计算题回答")
-            ai_client = get_openai_client()
+            ai_client = get_openai_client(workdir=self.workdir)
             if not ai_client:
                 self.log("未配置OpenAI API Key，无法使用AI服务", level="WARNING")
                 return False
             self.log(f"问题: \n{message.text}")
-            answer = await calculate_problem(message.text, client=ai_client)
+            answer = await calculate_problem(message.text, client=ai_client, workdir=self.workdir)
             self.log(f"回答为: {answer}")
             await self.send_message(message.chat.id, answer)
             return True
@@ -900,7 +956,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                 flat_buttons = (b for row in reply_markup.inline_keyboard for b in row)
                 option_to_btn = {btn.text: btn for btn in flat_buttons if btn.text}
                 self.log("检测到图片，尝试调用大模型进行图片识别并选择选项")
-                ai_client = get_openai_client()
+                ai_client = get_openai_client(workdir=self.workdir)
                 if not ai_client:
                     self.log(
                         "未配置OpenAI API Key，无法使用AI服务",
@@ -918,6 +974,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                     "选择正确的选项",
                     list(enumerate(options)),
                     client=ai_client,
+                    workdir=self.workdir,
                 )
                 result = options[result_index]
                 self.log(f"选择结果为: {result}")
@@ -1250,12 +1307,12 @@ class UserMonitor(BaseUserWorker[MonitorConfig]):
     async def get_send_text(self, match_cfg: MatchConfig, message: Message) -> str:
         send_text = match_cfg.get_send_text(message.text)
         if match_cfg.ai_reply and match_cfg.ai_prompt:
-            ai_client = get_openai_client()
+            ai_client = get_openai_client(workdir=self.workdir)
             if not ai_client:
                 self.log("未配置OpenAI API Key，无法使用AI服务", level="WARNING")
                 return send_text
             send_text = await get_reply(
-                match_cfg.ai_prompt, message.text, client=ai_client
+                match_cfg.ai_prompt, message.text, client=ai_client, workdir=self.workdir
             )
         return send_text
 
