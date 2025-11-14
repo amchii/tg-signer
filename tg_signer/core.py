@@ -679,21 +679,53 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                 print_to_user("错误: ")
                 print_to_user(e)
         if print_openai_prompt:
-            # Check if OpenAI config already exists
+            # Check if environment variables are already set
+            env_api_key = os.environ.get("OPENAI_API_KEY")
+            env_base_url = os.environ.get("OPENAI_BASE_URL")
+            env_model = os.environ.get("OPENAI_MODEL", "gpt-4o")
+            
+            # Check if config file exists
             existing_config = load_openai_config(self.workdir)
-            if existing_config.get("api_key") and existing_config.get("base_url"):
-                print_to_user("检测到已保存的OpenAI配置，将使用已保存的配置。")
+            has_config = existing_config.get("api_key") and existing_config.get("base_url")
+            
+            # If environment variables are detected, ask if user wants to save to file
+            if env_api_key:
+                print_to_user("检测到环境变量中已设置 OPENAI_API_KEY。")
+                if env_base_url:
+                    print_to_user(f"Base URL: {env_base_url}")
+                print_to_user(f"Model: {env_model}")
+                input_.incr()
+                save_to_file = input_("是否将环境变量配置保存到文件以便后续使用？(y/N): ").strip().lower()
+                if save_to_file == "y":
+                    # Save env vars to config file
+                    save_openai_config(
+                        self.workdir,
+                        env_api_key,
+                        env_base_url or "https://api.openai.com/v1",
+                        env_model
+                    )
+                    print_to_user("OpenAI配置已保存到文件。")
+                else:
+                    print_to_user("将使用环境变量配置（不保存到文件）。")
+                return actions
+            
+            # If config file exists but no env vars, offer to use it
+            if has_config:
+                print_to_user("检测到已保存的OpenAI配置：")
                 print_to_user(f"API Key: {existing_config.get('api_key', '')[:10]}...")
                 print_to_user(f"Base URL: {existing_config.get('base_url', '')}")
                 print_to_user(f"Model: {existing_config.get('model', 'gpt-4o')}")
                 use_existing = input_("是否使用已保存的配置？(Y/n): ").strip().lower()
                 if use_existing != "n":
+                    input_.incr()
                     return actions
-
-            # Prompt for OpenAI configuration
+            
+            # If nothing is set, prompt for configuration
             print_to_user("需要配置OpenAI API以使用大模型功能。")
+            print_to_user("（也可以通过环境变量 OPENAI_API_KEY 和 OPENAI_BASE_URL 进行配置）")
             api_key = input_("请输入 OPENAI_API_KEY: ").strip()
             while not api_key:
+                input_.decr()
                 print_to_user("API Key不能为空！")
                 api_key = input_("请输入 OPENAI_API_KEY: ").strip()
             
