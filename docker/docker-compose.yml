@@ -9,12 +9,15 @@ services:
     build:
       context: .
       dockerfile: CN.Dockerfile
+      args:
+        TZ: ${TZ:-Asia/Shanghai}
     container_name: tg-signer
     command: ["/bin/bash", "start.sh"]
     volumes:
       - $PWD:/opt/tg-signer
     environment:
       - TG_PROXY=socks5://172.17.0.1:7890
+      - TZ=${TZ:-Asia/Shanghai}
     networks:
       - tg_host
     restart: unless-stopped
