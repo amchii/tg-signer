@@ -440,3 +440,12 @@ def multi_run(obj, accounts, task_name, num_of_dialogs):
         signer = get_signer(task_name, obj, loop=loop)
         coros.append(signer.run(num_of_dialogs))
     loop.run_until_complete(asyncio.gather(*coros))
+
+
+@tg_signer.command(name="llm-config", help="配置大模型API")
+@click.pass_obj
+def llm_config(obj):
+    from tg_signer.ai_tools import OpenAIConfigManager
+
+    cfg_manager = OpenAIConfigManager(obj["workdir"])
+    cfg_manager.ask_for_config()
