@@ -244,3 +244,28 @@ def numbering(num: int, lang: NumberingLangT):
         return numbering_systems[num][lang]
     except KeyError:
         return str(num)
+
+
+class UserInput:
+    def __init__(self, index: int = 1, numbering_lang: NumberingLangT = "arabic"):
+        self.index = index
+        self.numbering_lang = numbering_lang
+
+    def incr(self, n: int = 1):
+        self.index += n
+
+    def decr(self, n: int = 1):
+        self.index -= n
+
+    @property
+    def index_str(self):
+        return f"{numbering(self.index, self.numbering_lang)}. "
+
+    def __call__(self, prompt: str = None):
+        r = input(f"{self.index_str}{prompt}")
+        self.incr(1)
+        return r
+
+
+def print_to_user(*args, sep=" ", end="\n", flush=False, **kwargs):
+    return print(*args, sep=sep, end=end, flush=flush, **kwargs)

@@ -307,6 +307,14 @@ class SignChatV3(BaseJSONConfig):
 
         return "\n".join(result)
 
+    @property
+    def requires_ai(self) -> bool:
+        ai_actions = {
+            SupportAction.CHOOSE_OPTION_BY_IMAGE,
+            SupportAction.REPLY_BY_CALCULATION_PROBLEM,
+        }
+        return any(action.action in ai_actions for action in self.actions)
+
 
 class SignConfigV3(BaseJSONConfig):
     version: ClassVar = 3
@@ -318,6 +326,10 @@ class SignConfigV3(BaseJSONConfig):
     sign_at: str  # 签到时间，time或crontab表达式
     random_seconds: int = 0
     sign_interval: int = 1  # 连续签到的间隔时间，单位秒
+
+    @property
+    def requires_ai(self) -> bool:
+        return any(chat.requires_ai for chat in self.chats)
 
 
 MatchRuleT: TypeAlias = Literal["exact", "contains", "regex", "all"]
@@ -438,6 +450,10 @@ class MatchConfig(BaseJSONConfig):
                 ) from e
         return send_text
 
+    @property
+    def requires_ai(self) -> bool:
+        return bool(self.ai_reply and self.ai_prompt)
+
 
 class MonitorConfig(BaseJSONConfig):
     """监控配置"""
@@ -449,3 +465,7 @@ class MonitorConfig(BaseJSONConfig):
     @property
     def chat_ids(self):
         return [cfg.chat_id for cfg in self.match_cfgs]
+
+    @property
+    def requires_ai(self) -> bool:
+        return any(cfg.requires_ai for cfg in self.match_cfgs)

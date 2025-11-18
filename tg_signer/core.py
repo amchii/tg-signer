@@ -55,55 +55,17 @@ from tg_signer.config import (
     UDPForward,
 )
 
-from .ai_tools import (
-    calculate_problem,
-    choose_option_by_image,
-    get_openai_client,
-    get_reply,
-)
+from .ai_tools import AITools, OpenAIConfigManager
 from .notification.server_chan import sc_send
-from .utils import NumberingLangT, numbering
+from .utils import UserInput, print_to_user
 
 logger = logging.getLogger("tg-signer")
-
-print_to_user = print
 
 DICE_EMOJIS = ("🎲", "🎯", "🏀", "⚽", "🎳", "🎰")
 
 Session.START_TIMEOUT = 5  # 原始超时时间为2秒，但一些代理访问会超时，所以这里调大一点
 
-
-class UserInput:
-    def __init__(self, index: int = 1, numbering_lang: NumberingLangT = "arabic"):
-        self.index = index
-        self.numbering_lang = numbering_lang
-
-    def incr(self, n: int = 1):
-        self.index += n
-
-    def decr(self, n: int = 1):
-        self.index -= n
-
-    @property
-    def index_str(self):
-        return f"{numbering(self.index, self.numbering_lang)}. "
-
-    def __call__(self, prompt: str = None):
-        r = input(f"{self.index_str}{prompt}")
-        self.incr(1)
-        return r
-
-
-def indent(
-    s: str,
-    level=0,
-    indentation: str = "\t",
-    sep: str = "\n",
-):
-    r = ""
-    for line in s.split(sep):
-        r += indentation * level + line + sep
-    return r
+OPENAI_USE_PROMPT = "当前任务需要配置大模型，请确保运行前正确设置`OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`等环境变量，或通过`tg-signer llm-config`持久化配置。"
 
 
 def readable_message(message: Message):
@@ -263,33 +225,6 @@ def make_dirs(path: pathlib.Path, exist_ok=True):
     if not path.is_dir():
         os.makedirs(path, exist_ok=exist_ok)
     return path
-
-
-def get_openai_config_file(workdir: pathlib.Path) -> pathlib.Path:
-    return workdir / "openai_config.json"
-
-
-def load_openai_config(workdir: pathlib.Path) -> dict:
-    config_file = get_openai_config_file(workdir)
-    if config_file.exists():
-        try:
-            with open(config_file, "r", encoding="utf-8") as fp:
-                return json.load(fp)
-        except (json.JSONDecodeError, IOError):
-            return {}
-    return {}
-
-
-def save_openai_config(workdir: pathlib.Path, api_key: str, base_url: str, model: str):
-    config_file = get_openai_config_file(workdir)
-    make_dirs(config_file.parent)
-    config = {
-        "api_key": api_key,
-        "base_url": base_url,
-        "model": model,
-    }
-    with open(config_file, "w", encoding="utf-8") as fp:
-        json.dump(config, fp, ensure_ascii=False, indent=2)
 
 
 ConfigT = TypeVar("ConfigT", bound=BaseJSONConfig)
@@ -567,6 +502,16 @@ class BaseUserWorker(Generic[ConfigT]):
     def ask_one(self):
         raise NotImplementedError
 
+    def ensure_ai_cfg(self):
+        cfg_manager = OpenAIConfigManager(self.workdir)
+        cfg = cfg_manager.load_config()
+        if not cfg:
+            cfg = cfg_manager.ask_for_config()
+        return cfg
+
+    def get_ai_tools(self):
+        return AITools(self.ensure_ai_cfg())
+
 
 class Waiter:
     def __init__(self):
@@ -605,9 +550,6 @@ class UserSignerWorkerContext(BaseModel):
     chat_messages: defaultdict[int, List[Message]]
 
 
-OPENAI_USE_PROMPT = '在运行前请通过环境变量正确设置`OPENAI_API_KEY`, `OPENAI_BASE_URL`。默认模型为"gpt-4o", 可通过环境变量`OPENAI_MODEL`更改。'
-
-
 class UserSigner(BaseUserWorker[SignConfigV3]):
     _workdir = ".signer"
     _tasks_dir = "signs"
@@ -633,7 +575,6 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         print_to_user(f"{input_.index_str}开始配置<动作>，请按照实际签到顺序配置。")
         available_actions = available_actions or list(SupportAction)
         actions = []
-        print_openai_prompt = False
         while True:
             try:
                 local_input_ = UserInput()
@@ -665,11 +606,9 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                     print_to_user(
                         "图片识别将使用大模型回答，请确保大模型支持图片识别。"
                     )
-                    print_openai_prompt = True
                     actions.append(ChooseOptionByImageAction())
                 elif action == SupportAction.REPLY_BY_CALCULATION_PROBLEM:
                     print_to_user("计算题将使用大模型回答。")
-                    print_openai_prompt = True
                     actions.append(ReplyByCalculationProblemAction())
                 else:
                     raise ValueError(f"不支持的动作: {action}")
@@ -678,68 +617,6 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
             except (ValueError, ValidationError) as e:
                 print_to_user("错误: ")
                 print_to_user(e)
-        if print_openai_prompt:
-            # Check if environment variables are already set
-            env_api_key = os.environ.get("OPENAI_API_KEY")
-            env_base_url = os.environ.get("OPENAI_BASE_URL")
-            env_model = os.environ.get("OPENAI_MODEL", "gpt-4o")
-            
-            # Check if config file exists
-            existing_config = load_openai_config(self.workdir)
-            has_config = existing_config.get("api_key") and existing_config.get("base_url")
-            
-            # If environment variables are detected, ask if user wants to save to file
-            if env_api_key:
-                print_to_user("检测到环境变量中已设置 OPENAI_API_KEY。")
-                if env_base_url:
-                    print_to_user(f"Base URL: {env_base_url}")
-                print_to_user(f"Model: {env_model}")
-                input_.incr()
-                save_to_file = input_("是否将环境变量配置保存到文件以便后续使用？(y/N): ").strip().lower()
-                if save_to_file == "y":
-                    # Save env vars to config file
-                    save_openai_config(
-                        self.workdir,
-                        env_api_key,
-                        env_base_url or "https://api.openai.com/v1",
-                        env_model
-                    )
-                    print_to_user("OpenAI配置已保存到文件。")
-                else:
-                    print_to_user("将使用环境变量配置（不保存到文件）。")
-                return actions
-            
-            # If config file exists but no env vars, offer to use it
-            if has_config:
-                print_to_user("检测到已保存的OpenAI配置：")
-                print_to_user(f"API Key: {existing_config.get('api_key', '')[:10]}...")
-                print_to_user(f"Base URL: {existing_config.get('base_url', '')}")
-                print_to_user(f"Model: {existing_config.get('model', 'gpt-4o')}")
-                use_existing = input_("是否使用已保存的配置？(Y/n): ").strip().lower()
-                if use_existing != "n":
-                    input_.incr()
-                    return actions
-            
-            # If nothing is set, prompt for configuration
-            print_to_user("需要配置OpenAI API以使用大模型功能。")
-            print_to_user("（也可以通过环境变量 OPENAI_API_KEY 和 OPENAI_BASE_URL 进行配置）")
-            api_key = input_("请输入 OPENAI_API_KEY: ").strip()
-            while not api_key:
-                input_.decr()
-                print_to_user("API Key不能为空！")
-                api_key = input_("请输入 OPENAI_API_KEY: ").strip()
-            
-            base_url = input_("请输入 OPENAI_BASE_URL (可选，直接回车使用默认): ").strip()
-            if not base_url:
-                base_url = "https://api.openai.com/v1"
-            
-            model = input_("请输入 OPENAI_MODEL (可选，直接回车使用默认 'gpt-4o'): ").strip()
-            if not model:
-                model = "gpt-4o"
-            
-            # Save the configuration
-            save_openai_config(self.workdir, api_key, base_url, model)
-            print_to_user("OpenAI配置已保存。")
         input_.incr()
         return actions
 
@@ -798,6 +675,8 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                 "random_seconds": random_seconds,
             }
         )
+        if config.requires_ai:
+            print_to_user(OPENAI_USE_PROMPT)
         return config
 
     @classmethod
@@ -841,10 +720,13 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
     async def run(
         self, num_of_dialogs=20, only_once: bool = False, force_rerun: bool = False
     ):
+        config = self.load_config(self.cfg_cls)
+        if config.requires_ai:
+            self.ensure_ai_cfg()
+
         if self.user is None:
             await self.login(num_of_dialogs, print_chat=True)
 
-        config = self.load_config(self.cfg_cls)
         sign_record = self.load_sign_record()
         chat_ids = [c.chat_id for c in config.chats]
 
@@ -970,12 +852,8 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
     ):
         if message.text:
             self.log("检测到文本回复，尝试调用大模型进行计算题回答")
-            ai_client = get_openai_client(workdir=self.workdir)
-            if not ai_client:
-                self.log("未配置OpenAI API Key，无法使用AI服务", level="WARNING")
-                return False
             self.log(f"问题: \n{message.text}")
-            answer = await calculate_problem(message.text, client=ai_client, workdir=self.workdir)
+            answer = await self.get_ai_tools().calculate_problem(message.text)
             self.log(f"回答为: {answer}")
             await self.send_message(message.chat.id, answer)
             return True
@@ -987,25 +865,16 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                 flat_buttons = (b for row in reply_markup.inline_keyboard for b in row)
                 option_to_btn = {btn.text: btn for btn in flat_buttons if btn.text}
                 self.log("检测到图片，尝试调用大模型进行图片识别并选择选项")
-                ai_client = get_openai_client(workdir=self.workdir)
-                if not ai_client:
-                    self.log(
-                        "未配置OpenAI API Key，无法使用AI服务",
-                        level="WARNING",
-                    )
-                    return False
                 image_buffer: BinaryIO = await self.app.download_media(
                     message.photo.file_id, in_memory=True
                 )
                 image_buffer.seek(0)
                 image_bytes = image_buffer.read()
                 options = list(option_to_btn)
-                result_index = await choose_option_by_image(
+                result_index = await self.get_ai_tools().choose_option_by_image(
                     image_bytes,
                     "选择正确的选项",
                     list(enumerate(options)),
-                    client=ai_client,
-                    workdir=self.workdir,
                 )
                 result = options[result_index]
                 self.log(f"选择结果为: {result}")
@@ -1253,7 +1122,10 @@ class UserMonitor(BaseUserWorker[MonitorConfig]):
             if continue_.strip().lower() != "y":
                 break
             i += 1
-        return MonitorConfig(match_cfgs=match_cfgs)
+        config = MonitorConfig(match_cfgs=match_cfgs)
+        if config.requires_ai:
+            print_to_user(OPENAI_USE_PROMPT)
+        return config
 
     @classmethod
     async def udp_forward(cls, f: UDPForward, message: Message):
@@ -1338,20 +1210,20 @@ class UserMonitor(BaseUserWorker[MonitorConfig]):
     async def get_send_text(self, match_cfg: MatchConfig, message: Message) -> str:
         send_text = match_cfg.get_send_text(message.text)
         if match_cfg.ai_reply and match_cfg.ai_prompt:
-            ai_client = get_openai_client(workdir=self.workdir)
-            if not ai_client:
-                self.log("未配置OpenAI API Key，无法使用AI服务", level="WARNING")
-                return send_text
-            send_text = await get_reply(
-                match_cfg.ai_prompt, message.text, client=ai_client, workdir=self.workdir
+            send_text = await self.get_ai_tools().get_reply(
+                match_cfg.ai_prompt,
+                message.text,
             )
         return send_text
 
     async def run(self, num_of_dialogs=20):
+        cfg = self.load_config(self.cfg_cls)
+        if cfg.requires_ai:
+            self.ensure_ai_cfg()
+
         if self.user is None:
             await self.login(num_of_dialogs, print_chat=True)
 
-        cfg = self.load_config(self.cfg_cls)
         self.app.add_handler(
             MessageHandler(self.on_message, filters.text & filters.chat(cfg.chat_ids)),
         )
