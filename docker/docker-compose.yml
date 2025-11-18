@@ -1,5 +1,3 @@
-version: "3"
-
 networks:
   tg_host:
     external: false
