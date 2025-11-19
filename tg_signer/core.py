@@ -9,6 +9,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from datetime import time as dt_time
 from typing import (
+    Annotated,
     BinaryIO,
     Generic,
     List,
@@ -21,11 +22,11 @@ from urllib import parse
 
 import httpx
 from croniter import CroniterBadCronError, croniter
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pyrogram import Client as BaseClient
 from pyrogram import errors, filters
 from pyrogram.enums import ChatMembersFilter, ChatType
-from pyrogram.handlers import MessageHandler
+from pyrogram.handlers import EditedMessageHandler, MessageHandler
 from pyrogram.methods.utilities.idle import idle
 from pyrogram.session import Session
 from pyrogram.storage import MemoryStorage
@@ -546,8 +547,15 @@ class UserSignerWorkerContext(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     waiter: Waiter
-    sign_chats: defaultdict[int, List[SignChatV3]]
-    chat_messages: defaultdict[int, List[Message]]
+    sign_chats: defaultdict[int, list[SignChatV3]]  # 签到配置列表
+    chat_messages: defaultdict[
+        int,
+        Annotated[
+            dict[int, Optional[Message]],
+            Field(default_factory=dict),
+        ],
+    ]  # 收到的消息，key为chat id
+    waiting_message: Optional[Message]  # 正在处理的消息
 
 
 class UserSigner(BaseUserWorker[SignConfigV3]):
@@ -560,7 +568,8 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         return UserSignerWorkerContext(
             waiter=Waiter(),
             sign_chats=defaultdict(list),
-            chat_messages=defaultdict(list),
+            chat_messages=defaultdict(dict),
+            waiting_message=None,
         )
 
     @property
@@ -708,13 +717,16 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                 sign_record = json.load(fp)
         return sign_record
 
-    async def sign(
+    async def sign_a_chat(
         self,
         chat: SignChatV3,
     ):
         self.log(f"开始执行: \n{chat}")
         for action in chat.actions:
+            self.log(f"等待处理动作: {action}")
             await self.wait_for(chat, action)
+            self.log(f"处理完成: {action}")
+            self.context.waiting_message = None
             await asyncio.sleep(chat.action_interval)
 
     async def run(
@@ -734,7 +746,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
             for chat in config.chats:
                 self.context.sign_chats[chat.chat_id].append(chat)
                 try:
-                    await self.sign(chat)
+                    await self.sign_a_chat(chat)
                 except errors.RPCError as _e:
                     self.log(f"签到失败: {_e} \nchat: \n{chat}")
                     logger.warning(_e, exc_info=True)
@@ -764,6 +776,9 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
             self.log(f"为以下Chat添加消息回调处理函数：{chat_ids}")
             self.app.add_handler(
                 MessageHandler(self.on_message, filters.chat(chat_ids))
+            )
+            self.app.add_handler(
+                EditedMessageHandler(self.on_edited_message, filters.chat(chat_ids))
             )
             try:
                 async with self.app:
@@ -811,21 +826,30 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         async with self.app:
             await self.send_dice(chat_id, emoji, delete_after, **kwargs)
 
-    async def on_message(self, client, message: Message):
-        try:
-            await self._on_message(client, message)
-        except Exception as e:
-            logger.exception(e)
-
     async def _on_message(self, client: Client, message: Message):
-        self.log(
-            f"收到来自「{message.from_user.username or message.from_user.id}」的消息: {readable_message(message)}"
-        )
         chats = self.context.sign_chats.get(message.chat.id)
         if not chats:
             self.log("忽略意料之外的聊天", level="WARNING")
             return
-        self.context.chat_messages[message.chat.id].append(message)
+        self.context.chat_messages[message.chat.id][message.id] = message
+
+    async def on_message(self, client: Client, message: Message):
+        self.log(
+            f"收到来自「{message.from_user.username or message.from_user.id}」的消息: {readable_message(message)}"
+        )
+        await self._on_message(client, message)
+
+    async def on_edited_message(self, client, message: Message):
+        self.log(
+            f"收到来自「{message.from_user.username or message.from_user.id}」对消息的更新，消息: {readable_message(message)}"
+        )
+        # 避免更新正在处理的消息，等待处理完成
+        while (
+            self.context.waiting_message
+            and self.context.waiting_message.id == message.id
+        ):
+            await asyncio.sleep(0.3)
+        await self._on_message(client, message)
 
     async def _click_keyboard_by_text(
         self, action: ClickKeyboardByTextAction, message: Message
@@ -892,25 +916,25 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         return False
 
     async def wait_for(self, chat: SignChatV3, action: ActionT, timeout=10):
-        self.log(f"处理动作: {action}")
         if isinstance(action, SendTextAction):
             return await self.send_message(chat.chat_id, action.text, chat.delete_after)
         elif isinstance(action, SendDiceAction):
             return await self.send_dice(chat.chat_id, action.dice, chat.delete_after)
         self.context.waiter.add(chat.chat_id)
         start = time.perf_counter()
-        self.log(f"等待处理动作: {action}")
         last_message = None
         while time.perf_counter() - start < timeout:
             await asyncio.sleep(0.3)
-            messages = self.context.chat_messages.get(chat.chat_id)
-            if not messages:
+            messages_dict = self.context.chat_messages.get(chat.chat_id)
+            if not messages_dict:
                 continue
+            messages = list(messages_dict.values())
             # 暂无新消息
             if messages[-1] == last_message:
                 continue
             last_message = messages[-1]
             for message in messages:
+                self.context.waiting_message = message
                 ok = False
                 if isinstance(action, ClickKeyboardByTextAction):
                     ok = await self._click_keyboard_by_text(action, message)
@@ -920,8 +944,8 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                     ok = await self._choose_option_by_image(action, message)
                 if ok:
                     self.context.waiter.sub(message.chat.id)
-                    # 这里移除了该消息，消息列表不可再迭代
-                    self.context.chat_messages[chat.chat_id].remove(message)
+                    # 将消息ID对应value置为None，保证收到消息的编辑时消息所处的顺序
+                    self.context.chat_messages[chat.chat_id][message.id] = None
                     return None
                 self.log(f"忽略消息: {readable_message(message)}")
         self.log(f"等待超时: \nchat: \n{chat} \naction: {action}", level="WARNING")
