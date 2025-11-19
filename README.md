@@ -14,7 +14,7 @@
 
 ### 安装
 
-需要Python3.9及以上
+需要Python3.10及以上
 
 ```sh
 pip install -U tg-signer

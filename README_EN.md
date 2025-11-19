@@ -14,7 +14,7 @@
 
 ### Installation
 
-Requires Python 3.9 or higher
+Requires Python 3.10 or higher
 
 ```sh
 pip install -U tg-signer
