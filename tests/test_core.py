@@ -79,6 +79,8 @@ async def test_client_context_manager_reference_counting_and_start_stop(
         workdir=tmp_path,
     )
     key = client.key
+    assert len(core._CLIENT_INSTANCES) == 1
+    assert key in core._CLIENT_INSTANCES
 
     # enter outer context
     async with client as c1:

@@ -114,7 +114,7 @@ class Client(BaseClient):
     def __init__(self, name: str, *args, **kwargs):
         key = kwargs.pop("key", None)
         super().__init__(name, *args, **kwargs)
-        self.key = key or str(self.session_string_file.resolve())
+        self.key = key or str(pathlib.Path(self.workdir).joinpath(self.name).resolve())
         if self.in_memory and not self.session_string:
             self.load_session_string()
             self.storage = MemoryStorage(self.name, self.session_string)
@@ -211,6 +211,7 @@ def get_client(
         workdir=workdir,
         session_string=session_string,
         in_memory=in_memory,
+        key=key,
         **kwargs,
     )
     _CLIENT_INSTANCES[key] = client
