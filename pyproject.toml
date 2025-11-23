@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tg-signer"
 dynamic = ["version"]
-description = "Telegram signer"
+description = "Automated Telegram tasks (check-ins, sending messages, keyboard clicks, AI replies, etc.); monitoring, forwarding, and auto-replying to private, group, and channel messages."
 authors = [
     { name = "Amchii", email = "finethankuandyou@gmail.com" }
 ]
-license = { text = "BSD-3-Clause" }
+license = "BSD-3-Clause"
 readme = "README.md"
 requires-python = ">=3.10"
 classifiers = [
