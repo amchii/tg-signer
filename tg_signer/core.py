@@ -370,6 +370,7 @@ class BaseUserWorker(Generic[ConfigT]):
             fp.write(str(user))
 
     async def login(self, num_of_dialogs=20, print_chat=True):
+        self.log("开始登录...")
         app = self.app
         async with app:
             me = await app.get_me()
@@ -405,6 +406,7 @@ class BaseUserWorker(Generic[ConfigT]):
             await self.app.save_session_string()
 
     async def logout(self):
+        self.log("开始登出...")
         is_authorized = await self.app.connect()
         if not is_authorized:
             await self.app.storage.delete()
@@ -733,12 +735,12 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
     async def run(
         self, num_of_dialogs=20, only_once: bool = False, force_rerun: bool = False
     ):
+        if self.user is None:
+            await self.login(num_of_dialogs, print_chat=True)
+
         config = self.load_config(self.cfg_cls)
         if config.requires_ai:
             self.ensure_ai_cfg()
-
-        if self.user is None:
-            await self.login(num_of_dialogs, print_chat=True)
 
         sign_record = self.load_sign_record()
         chat_ids = [c.chat_id for c in config.chats]
@@ -1242,12 +1244,12 @@ class UserMonitor(BaseUserWorker[MonitorConfig]):
         return send_text
 
     async def run(self, num_of_dialogs=20):
+        if self.user is None:
+            await self.login(num_of_dialogs, print_chat=True)
+
         cfg = self.load_config(self.cfg_cls)
         if cfg.requires_ai:
             self.ensure_ai_cfg()
-
-        if self.user is None:
-            await self.login(num_of_dialogs, print_chat=True)
 
         self.app.add_handler(
             MessageHandler(self.on_message, filters.text & filters.chat(cfg.chat_ids)),
