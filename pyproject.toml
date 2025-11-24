@@ -27,6 +27,17 @@ dependencies = [
     "httpx"
 ]
 
+[dependency-groups]
+dev = [
+    "ruff>=0.14.6",
+    "tox>=4.32.0",
+]
+test = [
+    "pytest>=9.0.1",
+    "pytest-asyncio>=1.3.0",
+]
+
+
 [project.urls]
 Homepage = "https://github.com/amchii/tg-signer"
 Repository = "https://github.com/amchii/tg-signer"
