@@ -252,6 +252,25 @@ Continue? (y/N): n
 
 ### Changelog
 
+#### 0.8.2
+- Support for persistent OpenAI API and model configuration
+- Minimum Python version requirement: 3.10
+- Support for handling edited messages (e.g., keyboard)
+
+#### 0.8.0
+- Support for running multiple tasks simultaneously within a single account in the same process
+
+#### 0.7.6
+- fix: When monitoring multiple chats, messages are forwarded to each chat (#55)
+
+#### 0.7.5
+- Capture and log all RPC errors during task execution
+- Bump kurigram version to 2.2.7
+
+#### 0.7.4
+- Support for fixed time intervals when executing multiple actions
+- No longer limited to one execution per day when scheduling with `crontab`
+
 #### 0.7.2
 
 - Support forwarding messages to external endpoints via:

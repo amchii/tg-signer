@@ -26,7 +26,7 @@ pip install -U tg-signer
 pip install "tg-signer[speedup]"
 ```
 
-#### Docker
+### Docker
 
 未上传直接使用的镜像，可以自行build镜像，见 [docker](./docker) 目录下的Dockerfile和 [README](./docker/README.md) 。
 
@@ -361,9 +361,12 @@ tg-signer monitor run my_monitor
 [INFO] [tg-signer] 2024-10-25 12:30:08,260 core.py 232 Message「我要抽奖」 to -4573702599 deleted!
 ```
 
-
-
 ### 版本变动日志
+
+#### 0.8.2
+- 支持持久化OpenAI API和模型配置
+- Python最小版本要求：3.10
+- 支持处理编辑后的消息（如键盘）
 
 #### 0.8.0
 - 支持单个账号同一进程内同时运行多个任务
