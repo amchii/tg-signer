@@ -32,9 +32,6 @@ Homepage = "https://github.com/amchii/tg-signer"
 Repository = "https://github.com/amchii/tg-signer"
 
 [project.optional-dependencies]
-tgcrypto = [
-    "tgcrypto"
-]
 speedup = [
     "tgcrypto"
 ]
