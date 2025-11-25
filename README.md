@@ -65,6 +65,7 @@ Commands:
   list                    列出已有配置
   list-members            查询聊天（群或频道）的成员, 频道需要管理员权限
   list-schedule-messages  显示已配置的定时消息
+  llm-config              配置大模型API
   login                   登录账号（用于获取session）
   logout                  登出账号并删除session文件
   monitor                 配置和运行监控
@@ -73,7 +74,8 @@ Commands:
   run                     根据任务配置运行签到
   run-once                运行一次签到任务，即使该签到任务今日已执行过
   schedule-messages       批量配置Telegram自带的定时发送消息功能
-  send-text               发送一次消息, 请确保当前会话已经"见过"该`chat_id`
+  send-dice               发送一次DICE消息, 请确保当前会话已经"见过"该`chat_id`。...
+  send-text               发送一次文本消息, 请确保当前会话已经"见过"该`chat_id`
   version                 Show version
 ```
 

@@ -735,6 +735,25 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
     async def run(
         self, num_of_dialogs=20, only_once: bool = False, force_rerun: bool = False
     ):
+        if self.app.in_memory or self.app.session_string:
+            return await self.in_memory_run(
+                num_of_dialogs, only_once=only_once, force_rerun=force_rerun
+            )
+        return await self.normal_run(
+            num_of_dialogs, only_once=only_once, force_rerun=force_rerun
+        )
+
+    async def in_memory_run(
+        self, num_of_dialogs=20, only_once: bool = False, force_rerun: bool = False
+    ):
+        async with self.app:
+            await self.normal_run(
+                num_of_dialogs, only_once=only_once, force_rerun=force_rerun
+            )
+
+    async def normal_run(
+        self, num_of_dialogs=20, only_once: bool = False, force_rerun: bool = False
+    ):
         if self.user is None:
             await self.login(num_of_dialogs, print_chat=True)
 
