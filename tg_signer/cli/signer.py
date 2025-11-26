@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from typing import Optional
 
 import click
@@ -449,3 +450,38 @@ def llm_config(obj):
 
     cfg_manager = OpenAIConfigManager(obj["workdir"])
     cfg_manager.ask_for_config()
+
+
+@tg_signer.command(
+    name="webgui",
+    help="启动一个WebGUI（需要通过`pip install tg-signer[gui]`安装相关依赖）",
+)
+@click.option("--host", "-H", "host", default="127.0.0.1", help="监听地址")
+@click.option("--port", "-P", "port", default=8080, help="监听端口")
+@click.option(
+    "--storage-secret",
+    "-S",
+    "storage_secret",
+    default=None,
+    show_default=True,
+    help="存储密钥，若不输入则每次启动会使用随机字符串",
+)
+@click.option(
+    "--auth-code",
+    "auth_code",
+    default=None,
+    show_default=True,
+    envvar="TG_SIGNER_GUI_AUTHCODE",
+    help="授权码，也可通过环境变量`TG_SIGNER_GUI_AUTHCODE`设置。若存在则访问界面时需要正确输入。",
+)
+def webgui(
+    host: str = None,
+    port: int = None,
+    storage_secret: str = None,
+    auth_code: str = None,
+):
+    from tg_signer.webui import AUTH_CODE_ENV, main
+
+    if auth_code:
+        os.environ[AUTH_CODE_ENV] = auth_code
+    main(host=host, port=port, storage_secret=storage_secret)

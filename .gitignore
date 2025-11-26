@@ -120,3 +120,4 @@ _test*.json
 
 .signer
 *.session_string
+.nicegui

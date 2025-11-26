@@ -24,7 +24,7 @@ dependencies = [
     "croniter",
     "json_repair",
     "typing-extensions",
-    "httpx"
+    "httpx",
 ]
 
 [dependency-groups]
@@ -35,15 +35,17 @@ dev = [
     "pytest-asyncio>=1.3.0",
 ]
 
-
-[project.urls]
-Homepage = "https://github.com/amchii/tg-signer"
-Repository = "https://github.com/amchii/tg-signer"
-
 [project.optional-dependencies]
 speedup = [
     "tgcrypto"
 ]
+gui = [
+    "nicegui>=1.4.20,<2.0.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/amchii/tg-signer"
+Repository = "https://github.com/amchii/tg-signer"
 
 [project.scripts]
 tg-signer = "tg_signer.__main__:signer"
