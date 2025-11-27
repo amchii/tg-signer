@@ -25,6 +25,14 @@ pip install -U tg-signer
 ```sh
 pip install "tg-signer[speedup]"
 ```
+#### WebUI
+tg-signer附带了一个WebUI，安装命令:
+```sh
+pip install "tg-signer[gui]"
+```
+
+![webgui](./assets/webui.jpeg)
+
 
 ### Docker
 
@@ -45,7 +53,9 @@ Options:
   -l, --log-level [debug|info|warn|error]
                                   日志等级, `debug`, `info`, `warn`, `error`
                                   [default: info]
-  --log-file PATH                 日志文件路径, 可以是相对路径  [default: tg-signer.log]
+  --log-file PATH                 日志文件路径, 可以是相对路径  [default: logs/tg-
+                                  signer.log]
+  --log-dir PATH                  日志文件目录, 可以是相对路径  [default: logs]
   -p, --proxy TEXT                代理地址, 例如: socks5://127.0.0.1:1080,
                                   会覆盖环境变量`TG_PROXY`的值  [env var: TG_PROXY]
   --session_dir PATH              存储TG Sessions的目录, 可以是相对路径  [default: .]
@@ -77,6 +87,8 @@ Commands:
   send-dice               发送一次DICE消息, 请确保当前会话已经"见过"该`chat_id`。...
   send-text               发送一次文本消息, 请确保当前会话已经"见过"该`chat_id`
   version                 Show version
+  webgui                  启动一个WebGUI（需要通过`pip install "tg-signer[gui]"`安装相关依赖）
+
 ```
 
 例如:
@@ -92,6 +104,7 @@ tg-signer list-members --chat_id -1001680975844 --admin  # 列出频道的管理
 tg-signer schedule-messages --crontab '0 0 * * *' --next-times 10 -- -1001680975844 你好  # 在未来10天的每天0点向'-1001680975844'发送消息
 tg-signer monitor run  # 配置个人、群组、频道消息监控与自动回复
 tg-signer multi-run -a account_a -a account_b same_task  # 使用'same_task'的配置同时运行'account_a'和'account_b'两个账号
+tg-signer webgui --auth-code averycomplexcode  # 启动一个WebGUI
 ```
 
 ### 配置代理（如有需要）
@@ -364,6 +377,10 @@ tg-signer monitor run my_monitor
 ```
 
 ### 版本变动日志
+
+#### 0.8.4
+- 新增 WebGUI
+- 更改日志默认目录为`logs`，warning和error分为单独文件
 
 #### 0.8.2
 - 支持持久化OpenAI API和模型配置
