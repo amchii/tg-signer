@@ -70,10 +70,18 @@ def get_signer(
 @click.option(
     "--log-file",
     "log_file",
-    default="tg-signer.log",
+    default="logs/tg-signer.log",
     show_default=True,
     type=click.Path(),
     help="日志文件路径, 可以是相对路径",
+)
+@click.option(
+    "--log-dir",
+    "log_dir",
+    default="logs",
+    show_default=True,
+    type=click.Path(),
+    help="日志文件目录, 可以是相对路径",
 )
 @click.option(
     "--proxy",
@@ -133,6 +141,7 @@ def tg_signer(
     ctx: click.Context,
     log_level: str,
     log_file: str,
+    log_dir: str,
     proxy: str,
     session_dir: str,
     account: str,
@@ -142,7 +151,7 @@ def tg_signer(
 ):
     from tg_signer.logger import configure_logger
 
-    logger = configure_logger(log_level, log_file)
+    logger = configure_logger(log_level=log_level, log_dir=log_dir, log_file=log_file)
     ctx.ensure_object(dict)
     proxy = get_proxy(proxy)
     if ctx.invoked_subcommand in [

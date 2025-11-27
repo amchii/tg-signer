@@ -8,10 +8,13 @@ from pydantic import TypeAdapter
 
 from tg_signer.webui.data import (
     CONFIG_META,
+    DEFAULT_LOG_FILE,
     DEFAULT_WORKDIR,
+    LOG_DIR,
     ConfigKind,
     delete_config,
     get_workdir,
+    list_log_files,
     list_task_names,
     load_config,
     load_logs,
@@ -65,7 +68,7 @@ AUTH_STORAGE_KEY = "tg_signer_gui_auth_code"
 class UIState:
     def __init__(self) -> None:
         self.workdir: Path = get_workdir(DEFAULT_WORKDIR)
-        self.log_path: Path = Path("tg-signer.log")
+        self.log_path: Path = DEFAULT_LOG_FILE
         self.log_limit: int = 200
         self.record_filter: str = ""
 
@@ -307,7 +310,7 @@ def log_block() -> Callable[[], None]:
             "text-sm text-gray-500 mb-1"
         )
 
-        with ui.row().classes("items-end w-full gap-3"):
+        with ui.row().classes("items-end w-full gap-3 flex-wrap"):
             limit_input = ui.number(
                 label="日志行数",
                 value=state.log_limit,
@@ -315,8 +318,13 @@ def log_block() -> Callable[[], None]:
                 max=2000,
                 format="%d",
             ).classes("w-32")
+            log_select = ui.select(
+                label=f"选择日志文件（{LOG_DIR}/）",
+                options=[],
+                on_change=lambda e: select_log_file(e.value),
+            ).classes("min-w-[220px]")
             log_path_input = ui.input(
-                label="日志路径", value=str(state.log_path)
+                label="日志路径（可自定义）", value=str(state.log_path)
             ).classes("w-full")
         log_area = ui.scroll_area().classes(
             "w-full bg-gray-50 rounded-lg border border-gray-200"
@@ -339,12 +347,29 @@ def log_block() -> Callable[[], None]:
                 return "text-blue-700"
             return "text-gray-800"
 
+        def refresh_log_options() -> None:
+            options = [str(p) for p in list_log_files(LOG_DIR)]
+            current_path = str(log_path_input.value or state.log_path)
+            if current_path and current_path not in options:
+                options.insert(0, current_path)
+            log_select.options = options
+            log_select.value = current_path
+            log_select.update()
+
+        def select_log_file(path_value: str | None) -> None:
+            if not path_value:
+                return
+            log_path_input.value = path_value
+            log_path_input.update()
+            refresh()
+
         def refresh() -> None:
+            refresh_log_options()
             try:
                 state.log_limit = int(limit_input.value or state.log_limit)
             except ValueError:
                 state.log_limit = 200
-            state.set_log_path(log_path_input.value or "tg-signer.log")
+            state.set_log_path(log_path_input.value or str(DEFAULT_LOG_FILE))
             path, lines = load_logs(state.log_limit, log_path_input.value)
             log_list.clear()
             if not lines:
@@ -368,6 +393,8 @@ def log_block() -> Callable[[], None]:
         def refresh_status(text: str) -> None:
             log_status.text = text
             log_status.update()
+
+        refresh_log_options()
 
     return refresh
 

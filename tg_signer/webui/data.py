@@ -15,6 +15,8 @@ CONFIG_META: dict[ConfigKind, Tuple[str, type[BaseJSONConfig]]] = {
 }
 
 DEFAULT_WORKDIR = Path(os.environ.get("TG_SIGNER_WORKDIR", ".signer"))
+LOG_DIR = Path("logs")
+DEFAULT_LOG_FILE = LOG_DIR / "tg-signer.log"
 
 
 @dataclass
@@ -214,8 +216,24 @@ def tail_file(path: Path, limit: int = 200) -> List[str]:
     return list(buffer)
 
 
+def list_log_files(log_dir: Optional[Path | str] = None) -> List[Path]:
+    base = Path(log_dir) if log_dir else LOG_DIR
+    if not base.is_dir():
+        return []
+    return sorted(p for p in base.glob("*.log") if p.is_file())
+
+
+def _resolve_log_path(log_path: Optional[Path | str] = None) -> Path:
+    if log_path:
+        path = Path(log_path).expanduser()
+        if not path.is_absolute() and path.parent == Path("."):
+            return LOG_DIR / path
+        return path
+    return DEFAULT_LOG_FILE
+
+
 def load_logs(
     limit: int = 200, log_path: Optional[Path | str] = None
 ) -> Tuple[Path, List[str]]:
-    path = Path(log_path) if log_path else Path("tg-signer.log")
+    path = _resolve_log_path(log_path)
     return path, tail_file(path, limit=limit)
