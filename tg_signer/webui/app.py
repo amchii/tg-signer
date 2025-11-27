@@ -22,6 +22,8 @@ from tg_signer.webui.data import (
     load_user_infos,
     save_config,
 )
+from tg_signer.webui.interactive import InteractiveSignerConfig
+from tg_signer.webui.schema_utils import clean_schema
 
 SIGNER_TEMPLATE: Dict[str, object] = {
     "chats": [
@@ -90,17 +92,14 @@ def notify_error(exc: Exception) -> None:
     ui.notify(f"{exc}", type="negative")
 
 
-class ConfigBlock:
+class BaseConfigBlock:
     def __init__(
         self,
         kind: ConfigKind,
         template: Dict[str, object],
-        *,
-        goto_records: Callable[[str], None] = lambda _task: None,
     ):
         self.kind = kind
         self.template = template
-        self._goto_records = goto_records
         self.title = "签到配置 (signer)" if kind == "signer" else "监控配置 (monitor)"
         self.root_dir, self.cfg_cls = CONFIG_META[kind]
         with ui.card().classes("w-full shadow-md"):
@@ -120,9 +119,21 @@ class ConfigBlock:
                     placeholder="my_task",
                 ).classes("min-w-[200px]")
                 ui.button("使用示例", on_click=self.fill_template)
+                self.setup_toolbar()
+
+            # MonitorConfig schema causes json_editor to fail rendering due to "format": "uri" etc.
+            # We need to clean the schema before passing it to the editor.
+            schema = TypeAdapter(self.cfg_cls | None).json_schema()
+            if self.kind == "monitor":
+                schema = clean_schema(schema)
+
+            def on_change(e):
+                self.editor.properties["content"] = e.content
+
             self.editor = ui.json_editor(
                 {"content": {"json": None}},
-                schema=TypeAdapter(self.cfg_cls | None).json_schema(),
+                schema=schema,
+                on_change=on_change,
             )
             self.selected_name: dict[str, str] = {"value": ""}
 
@@ -131,14 +142,15 @@ class ConfigBlock:
                 ui.button("加载", on_click=self.load_current)
                 ui.button("保存", color="primary", on_click=self.save_current)
                 ui.button("删除", color="negative", on_click=self.delete_current)
+            self.setup_footer()
 
-            self.record_hint = ui.label("").classes("text-sm text-primary")
-            self.record_btn = ui.button(
-                "查看签到记录",
-                color="primary",
-                on_click=self.goto_records,
-            ).classes("min-w-[120px]")
-            self.record_btn.disable()
+    def setup_toolbar(self):
+        """Override to add more buttons to the top toolbar"""
+        pass
+
+    def setup_footer(self):
+        """Override to add more buttons to the bottom footer"""
+        pass
 
     def __call__(self, *args, **kwargs):
         self.refresh_options()
@@ -161,23 +173,13 @@ class ConfigBlock:
             self.name_input.update()
             self.editor.run_editor_method(":expand", "[]", "path => true")
             self.selected_name["value"] = target
-            self.record_hint.text = ""
-            if self.kind == "signer":
-                records = load_sign_records(state.workdir)
-                has_record = any(r.task == target for r in records)
-                if has_record:
-                    self.record_btn.enable()
-                    self.record_hint.text = f"发现签到记录: {target}"
-                else:
-                    self.record_btn.disable()
-                    self.record_hint.text = "无签到记录"
-            else:
-                self.record_btn.disable()
-                self.record_hint.text = ""
-            self.record_hint.update()
-            self.record_btn.update()
+            self.on_loaded(target)
         except Exception as exc:  # noqa: BLE001
             notify_error(exc)
+
+    def on_loaded(self, target: str):
+        """Hook called after config is loaded"""
+        pass
 
     def save_current(self) -> None:
         target = (self.name_input.value or self.select.value or "").strip()
@@ -219,8 +221,60 @@ class ConfigBlock:
         except Exception as exc:  # noqa: BLE001
             notify_error(exc)
 
+
+class SignerBlock(BaseConfigBlock):
+    def __init__(
+        self,
+        template: Dict[str, object],
+        *,
+        goto_records: Callable[[str], None] = lambda _task: None,
+    ):
+        self.record_btn = None
+        self.record_hint = None
+        self._goto_records = goto_records
+        super().__init__("signer", template)
+
+    def setup_toolbar(self):
+        ui.button("交互式配置", on_click=self.open_interactive).props("outline")
+
+    def setup_footer(self):
+        self.record_hint = ui.label("").classes("text-sm text-primary")
+        self.record_btn = ui.button(
+            "查看签到记录",
+            color="primary",
+            on_click=self.goto_records,
+        ).classes("min-w-[120px]")
+        self.record_btn.disable()
+
+    def on_loaded(self, target: str):
+        records = load_sign_records(state.workdir)
+        has_record = any(r.task == target for r in records)
+        if has_record:
+            self.record_btn.enable()
+            self.record_hint.text = f"发现签到记录: {target}"
+        else:
+            self.record_btn.disable()
+            self.record_hint.text = "无签到记录"
+        self.record_hint.update()
+        self.record_btn.update()
+
     def goto_records(self):
         self._goto_records(self.selected_name["value"])
+
+    def open_interactive(self):
+        def on_complete():
+            self.refresh_options()
+            # If the user saved a config with the same name as currently selected, reload it
+            if self.select.value:
+                self.load_current()
+
+        wizard = InteractiveSignerConfig(state.workdir, on_complete=on_complete)
+        wizard.open()
+
+
+class MonitorBlock(BaseConfigBlock):
+    def __init__(self, template: Dict[str, object]):
+        super().__init__("monitor", template)
 
 
 def user_info_block() -> Callable[[], None]:
@@ -461,12 +515,10 @@ def _build_dashboard(container) -> None:
                 with ui.tab_panels(sub_tabs, value=tab_signer).classes("w-full"):
                     with ui.tab_panel(tab_signer):
                         refreshers.append(
-                            ConfigBlock(
-                                "signer", SIGNER_TEMPLATE, goto_records=goto_records
-                            )
+                            SignerBlock(SIGNER_TEMPLATE, goto_records=goto_records)
                         )
                     with ui.tab_panel(tab_monitor):
-                        refreshers.append(ConfigBlock("monitor", MONITOR_TEMPLATE))
+                        refreshers.append(MonitorBlock(MONITOR_TEMPLATE))
 
             with ui.tab_panel(tab_users):
                 ui.label("查看当前已登录账户信息 (users/*/me.json)。").classes(
@@ -497,9 +549,9 @@ def _auth_gate(container, auth_code: str, on_success: Callable[[], None]) -> Non
         with ui.column().classes("w-full items-center"):
             with ui.card().classes("w-full max-w-xl shadow-md"):
                 ui.label("Auth Code 验证").classes("text-lg font-semibold")
-                ui.label(
-                    "检测到环境变量 TG_SIGNER_GUI_AUTHCODE，首次访问需验证。"
-                ).classes("text-sm text-gray-500")
+                ui.label("检测到auth_code环境变量已配置，首次访问需验证。").classes(
+                    "text-sm text-gray-500"
+                )
                 code_input = ui.input(
                     label="Auth Code",
                     placeholder="请输入授权码",
@@ -509,6 +561,9 @@ def _auth_gate(container, auth_code: str, on_success: Callable[[], None]) -> Non
                 status = ui.label("").classes("text-sm text-negative")
 
                 def verify() -> None:
+                    # TODO: Security improvements needed
+                    # 1. Add rate limiting (e.g. max 5 attempts per minute) to prevent brute-force attacks.
+                    # 2. Use secrets.compare_digest(code, auth_code) to prevent timing attacks.
                     code = (code_input.value or "").strip()
                     if not code:
                         ui.notify("请输入授权码", type="warning")
