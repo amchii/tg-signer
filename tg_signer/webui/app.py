@@ -114,6 +114,7 @@ class BaseConfigBlock:
                     with_input=True,
                     on_change=self.load_current,
                 ).classes("min-w-[240px]")
+                ui.button("重置", on_click=self.clear_selection).props("outline")
                 self.name_input = ui.input(
                     label="保存为/新建名称",
                     placeholder="my_task",
@@ -144,6 +145,12 @@ class BaseConfigBlock:
                 ui.button("删除", color="negative", on_click=self.delete_current)
             self.setup_footer()
 
+    def clear_selection(self) -> None:
+        self.select.value = None
+        self.name_input.value = ""
+        self.fill_template()
+        self.selected_name["value"] = ""
+
     def setup_toolbar(self):
         """Override to add more buttons to the top toolbar"""
         pass
@@ -163,7 +170,6 @@ class BaseConfigBlock:
     def load_current(self) -> None:
         target = self.select.value
         if not target:
-            ui.notify("请先选择配置", type="warning")
             return
         try:
             entry = load_config(self.kind, target, workdir=state.workdir)
@@ -268,7 +274,15 @@ class SignerBlock(BaseConfigBlock):
             if self.select.value:
                 self.load_current()
 
-        wizard = InteractiveSignerConfig(state.workdir, on_complete=on_complete)
+        initial_config = self.editor.properties["content"].get("json")
+        initial_name = self.name_input.value or self.select.value or ""
+
+        wizard = InteractiveSignerConfig(
+            state.workdir,
+            on_complete=on_complete,
+            initial_config=initial_config,
+            initial_name=initial_name,
+        )
         wizard.open()
 
 

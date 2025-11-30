@@ -1,6 +1,7 @@
 from typing import Callable, List, Optional
 
 from nicegui import ui
+from nicegui.events import ValueChangeEventArguments
 from pydantic import ValidationError
 
 from tg_signer.config import (
@@ -14,11 +15,17 @@ from tg_signer.config import (
     SignConfigV3,
     SupportAction,
 )
-from tg_signer.webui.data import save_config
+from tg_signer.webui.data import load_user_infos, save_config
 
 
 class InteractiveSignerConfig:
-    def __init__(self, workdir, on_complete: Callable[[], None]):
+    def __init__(
+        self,
+        workdir,
+        on_complete: Callable[[], None],
+        initial_config: Optional[dict] = None,
+        initial_name: str = "",
+    ):
         self.workdir = workdir
         self.on_complete = on_complete
         self.dialog = ui.dialog()
@@ -32,10 +39,21 @@ class InteractiveSignerConfig:
             self.content_area = ui.scroll_area().classes("w-full flex-grow p-4")
 
             # State
-            self.task_name = "my_sign"
+            self.task_name = initial_name or "my_sign"
             self.sign_at = "06:00:00"
             self.random_seconds = 0
             self.chats: List[SignChatV3] = []
+
+            if initial_config:
+                try:
+                    loaded = SignConfigV3.load(initial_config)
+                    if loaded:
+                        cfg, _ = loaded
+                        self.sign_at = cfg.sign_at
+                        self.random_seconds = cfg.random_seconds
+                        self.chats = list(cfg.chats)
+                except Exception as e:
+                    ui.notify(f"加载现有配置失败: {e}", type="warning")
 
             self.render_main_form()
 
@@ -136,12 +154,94 @@ class InteractiveSignerConfig:
                 "text-lg font-bold mb-4"
             )
 
+            # Quick Import Dialog
+            def show_import_dialog():
+                user_infos = load_user_infos(self.workdir)
+                if not user_infos:
+                    ui.notify("未找到用户信息", type="warning")
+                    return
+
+                with ui.dialog() as import_dialog, ui.card().classes("w-full max-w-lg"):
+                    ui.label("从最近聊天快速导入").classes("text-lg font-bold mb-4")
+
+                    def on_chat_select(e: ValueChangeEventArguments):
+                        selected_chat = e.value
+                        if not selected_chat:
+                            return
+
+                        chat_id, label = selected_chat
+                        # Auto fill ID
+                        id_input.value = chat_id
+
+                        # Auto fill name if empty
+                        if not name_input.value:
+                            name_input.value = label
+
+                        import_dialog.close()
+
+                    def on_user_select(e):
+                        user_id = e.value
+                        chat_select.options = {}
+                        chat_select.value = None
+
+                        if not user_id:
+                            chat_select.disable()
+                            return
+
+                        target_user = next(
+                            (u for u in user_infos if u.user_id == user_id), None
+                        )
+                        if target_user and target_user.latest_chats:
+                            options = {}
+                            for c in target_user.latest_chats:
+                                label = c.get("title") or c.get("first_name") or "N/A"
+                                username = c.get("username")
+                                if username:
+                                    label += f" (@{username})"
+                                value = (c["id"], label)
+                                options[value] = label
+                            chat_select.options = options
+                            chat_select.enable()
+                        else:
+                            chat_select.disable()
+                            ui.notify("该用户无最近聊天记录", type="warning")
+
+                    with ui.column().classes("w-full gap-4"):
+                        user_options = {
+                            u.user_id: f"{u.user_id} ({u.data.get('first_name', '')})"
+                            for u in user_infos
+                        }
+                        ui.select(
+                            options=user_options,
+                            label="选择用户",
+                            on_change=on_user_select,
+                            with_input=True,
+                        ).classes("w-full")
+
+                        chat_select = ui.select(
+                            options={},
+                            label="选择聊天",
+                            on_change=on_chat_select,
+                            with_input=True,
+                        ).classes("w-full")
+                        chat_select.disable()
+
+                    ui.button("取消", on_click=import_dialog.close).props(
+                        "flat"
+                    ).classes("ml-auto mt-4")
+
+                import_dialog.open()
+
             with ui.grid(columns=2).classes("w-full gap-4 mb-4"):
-                id_input = ui.input(
-                    label="Chat ID",
-                    value=str(d_chat_id) if d_chat_id else "",
-                    placeholder="整数ID或@username",
-                ).props("outlined")
+                id_input = (
+                    ui.input(
+                        label="Chat ID",
+                        value=str(d_chat_id) if d_chat_id else "",
+                        placeholder="整数ID (点击选择)",
+                    )
+                    .props("outlined")
+                    .on("click", show_import_dialog)
+                )
 
                 name_input = ui.input(label="备注名称 (可选)", value=d_name).props(
                     "outlined"
@@ -272,30 +372,10 @@ class InteractiveSignerConfig:
 
             def save_chat():
                 try:
-                    cid_str = id_input.value.strip()
-                    if not cid_str:
-                        raise ValueError("Chat ID不能为空")
-
                     try:
-                        cid = int(cid_str)
-                    except ValueError:
-                        if not cid_str.startswith("@"):
-                            raise ValueError("Chat ID必须是整数或以@开头的username")
-                        # For username, we can't easily convert to int ID without client,
-                        # but config allows int or str? Wait, SignChatV3 definition says chat_id: int.
-                        # Let's check config.py again.
-                        # SignChatV3: chat_id: int.
-                        # But in core.py readable_chat handles username.
-                        # Wait, CLI `ask_one` casts input to int: `int(input_("Chat ID..."))`.
-                        # So it seems only int IDs are supported in SignConfigV3?
-                        # Let's re-read config.py SignChatV3 definition.
-                        # Line 229: chat_id: int
-                        # So username is NOT supported in SignConfigV3?
-                        # But MatchConfig supports int or str.
-                        # Let's assume int for now as per type hint.
-                        # If user enters username, maybe we should warn or try to resolve?
-                        # CLI `ask_one` explicitly casts to int. So I will enforce int.
-                        cid = int(cid_str)
+                        cid = int(id_input.value)
+                    except (ValueError, TypeError):
+                        raise ValueError("Chat ID不能为空且必须是整数")
 
                     if not d_actions:
                         raise ValueError("至少需要配置一个动作")
