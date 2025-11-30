@@ -46,7 +46,9 @@ def configure_logger(
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 
-    log_file = log_file or pathlib.Path(log_dir) / f"{name}.log"
+    log_dir = pathlib.Path(log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_file or log_dir / f"{name}.log"
     file_handler = RotatingFileHandler(
         log_file,
         maxBytes=max_bytes,
@@ -58,7 +60,7 @@ def configure_logger(
 
     if logging.WARNING >= level_no:
         warn_file_handler = RotatingFileHandler(
-            pathlib.Path(log_dir) / "warn.log",
+            log_dir / "warn.log",
             maxBytes=max_bytes,
             backupCount=10,
             encoding="utf-8",
@@ -70,7 +72,7 @@ def configure_logger(
 
     if logging.ERROR >= level_no:
         error_file_handler = RotatingFileHandler(
-            pathlib.Path(log_dir) / "error.log",
+            log_dir / "error.log",
             maxBytes=max_bytes,
             backupCount=10,
             encoding="utf-8",

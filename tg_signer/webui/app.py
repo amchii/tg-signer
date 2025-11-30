@@ -294,6 +294,60 @@ def user_info_block() -> Callable[[], None]:
                     ui.label(f"文件: {entry.path}")
                     ui.code(pretty_json(entry.data), language="json").classes("w-full")
 
+                    if entry.latest_chats:
+                        ui.separator().classes("my-2")
+                        ui.label(f"最近聊天 ({len(entry.latest_chats)})").classes(
+                            "font-semibold"
+                        )
+
+                        chat_rows = []
+                        for chat in entry.latest_chats:
+                            chat_rows.append(
+                                {
+                                    "id": chat.get("id"),
+                                    "title": chat.get("title")
+                                    or chat.get("first_name")
+                                    or "N/A",
+                                    "type": chat.get("type"),
+                                    "username": chat.get("username") or "",
+                                }
+                            )
+
+                        ui.table(
+                            columns=[
+                                {
+                                    "name": "id",
+                                    "label": "ID",
+                                    "field": "id",
+                                    "align": "left",
+                                },
+                                {
+                                    "name": "title",
+                                    "label": "名称",
+                                    "field": "title",
+                                    "align": "left",
+                                },
+                                {
+                                    "name": "type",
+                                    "label": "类型",
+                                    "field": "type",
+                                    "align": "left",
+                                },
+                                {
+                                    "name": "username",
+                                    "label": "用户名",
+                                    "field": "username",
+                                    "align": "left",
+                                },
+                            ],
+                            rows=chat_rows,
+                            pagination=10,
+                        ).classes("w-full").props("flat dense")
+                    else:
+                        ui.label("未找到最近聊天记录").classes(
+                            "text-gray-500 text-sm mt-2"
+                        )
+
     return refresh
 
 

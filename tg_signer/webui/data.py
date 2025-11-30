@@ -33,6 +33,7 @@ class UserInfo:
     user_id: str
     data: Dict[str, Any]
     path: Path
+    latest_chats: List[Dict[str, Any]] = None
 
 
 @dataclass
@@ -145,7 +146,24 @@ def load_user_infos(workdir: Optional[Path | str] = None) -> List[UserInfo]:
                 data = json.load(fp)
             except json.JSONDecodeError:
                 continue
-        entries.append(UserInfo(user_id=user_dir.name, data=data, path=me_file))
+
+        latest_chats = []
+        chats_file = user_dir / "latest_chats.json"
+        if chats_file.is_file():
+            with open(chats_file, "r", encoding="utf-8") as fp:
+                try:
+                    latest_chats = json.load(fp)
+                except json.JSONDecodeError:
+                    pass
+
+        entries.append(
+            UserInfo(
+                user_id=user_dir.name,
+                data=data,
+                path=me_file,
+                latest_chats=latest_chats,
+            )
+        )
     return entries
 
 
