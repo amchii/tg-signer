@@ -197,7 +197,7 @@ def get_client(
     session_string: str = None,
     in_memory: bool = False,
     **kwargs,
-):
+) -> Client:
     proxy = proxy or get_proxy()
     api_id, api_hash = get_api_config()
     key = str(pathlib.Path(workdir).joinpath(name).resolve())

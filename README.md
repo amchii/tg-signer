@@ -380,7 +380,7 @@ tg-signer monitor run my_monitor
 
 #### 0.8.4
 - 新增 WebGUI
-- 更改日志默认目录为`logs`，warning和error分为单独文件
+- 新增`--log-dir`选项，更改日志默认目录为`logs`，warning和error分为单独文件
 
 #### 0.8.2
 - 支持持久化OpenAI API和模型配置
