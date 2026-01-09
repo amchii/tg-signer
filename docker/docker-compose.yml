@@ -21,5 +21,6 @@ services:
     environment:
       - TZ=${TZ:-Asia/Shanghai}
       - TG_PROXY=${TG_PROXY:-}
-      - TG_SIGNER_GUI_AUTHCODE=${AUTH_CODE:-}
+      # WebUI 访问密码，请修改为你自己的密码
+      - TG_SIGNER_GUI_AUTHCODE=change_me_to_your_password
     restart: unless-stopped
