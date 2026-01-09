@@ -1,26 +1,24 @@
 # tg-signer Docker Compose 配置
 #
-# 使用方法:
-#   1. 创建数据目录: mkdir -p data
-#   2. 启动: docker compose up -d
-#   3. 访问: http://localhost:8080
-#
-# 环境变量 (可选):
-#   - AUTH_CODE: WebUI 访问密码
-#   - TG_PROXY: 代理地址 (如 socks5://host.docker.internal:7890)
-#   - TZ: 时区 (默认 Asia/Shanghai)
+# 首次使用请按以下步骤操作：
+#   1. 启动容器: docker compose up -d
+#   2. 进入容器: docker exec -it tg-signer bash
+#   3. 登录 TG: tg-signer login
+#   4. 配置任务: tg-signer run my_task (按提示配置)
+#   5. 退出容器后，修改下方 command 为实际任务名
+#   6. 重启容器: docker compose up -d
 
 services:
   tg-signer:
-    image: ghcr.io/htazq/tg-signer:latest-webui
+    image: ghcr.io/htazq/tg-signer:latest
     container_name: tg-signer
-    ports:
-      - "8080:8080"
     volumes:
       - ./data:/opt/tg-signer
     environment:
       - TZ=${TZ:-Asia/Shanghai}
       - TG_PROXY=${TG_PROXY:-}
-      # WebUI 访问密码，请修改为你自己的密码
-      - TG_SIGNER_GUI_AUTHCODE=change_me_to_your_password
     restart: unless-stopped
+    # 首次配置时使用 sleep infinity 保持容器运行
+    command: ["sleep", "infinity"]
+    # 配置完成后，改为运行任务（取消下行注释，注释上行）
+    # command: ["tg-signer", "run", "任务名1", "任务名2"]
