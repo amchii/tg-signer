@@ -1,0 +1,93 @@
+# Docker Compose 完整使用示例
+# 复制此文件为 docker-compose.yml 并根据需要修改配置
+#
+# 使用方法:
+#   docker compose up -d           # 启动所有服务
+#   docker compose up -d webui     # 仅启动 WebUI
+#   docker compose up -d signer    # 仅启动签到服务
+#   docker compose logs -f         # 查看日志
+
+networks:
+  tg_network:
+    driver: bridge
+
+volumes:
+  signer_data:
+    driver: local
+
+services:
+  # ============================================
+  # WebUI 服务 - 通过浏览器管理 tg-signer
+  # ============================================
+  webui:
+    image: ghcr.io/htazq/tg-signer:latest-webui
+    container_name: tg-signer-webui
+    ports:
+      - "8080:8080"
+    volumes:
+      # 数据持久化目录
+      - ./data:/opt/tg-signer
+      # 或使用 Docker volume
+      # - signer_data:/opt/tg-signer
+    environment:
+      # 时区设置
+      - TZ=${TZ:-Asia/Shanghai}
+      # 代理设置 (如需要)
+      - TG_PROXY=${TG_PROXY:-}
+      # WebUI 访问密码 (强烈建议设置)
+      - TG_SIGNER_GUI_AUTHCODE=${AUTH_CODE:-your_secure_password}
+      # 账号名称
+      - TG_ACCOUNT=${TG_ACCOUNT:-my_account}
+    networks:
+      - tg_network
+    restart: unless-stopped
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ============================================
+  # 签到服务 - 后台运行签到任务
+  # ============================================
+  signer:
+    image: ghcr.io/htazq/tg-signer:latest
+    container_name: tg-signer
+    volumes:
+      # 与 WebUI 共享数据目录
+      - ./data:/opt/tg-signer
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      - TG_PROXY=${TG_PROXY:-}
+      - TG_ACCOUNT=${TG_ACCOUNT:-my_account}
+    networks:
+      - tg_network
+    restart: unless-stopped
+    # 启动命令 - 根据你的任务名修改
+    # 首次使用请先通过 WebUI 或 CLI 完成登录和配置
+    command: ["tg-signer", "run", "my_task"]
+    # 如需交互式配置，可使用:
+    # command: ["sleep", "infinity"]
+    # 然后执行: docker exec -it tg-signer bash
+
+  # ============================================
+  # 监控服务 - 运行消息监控
+  # ============================================
+  monitor:
+    image: ghcr.io/htazq/tg-signer:latest
+    container_name: tg-signer-monitor
+    volumes:
+      - ./data:/opt/tg-signer
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      - TG_PROXY=${TG_PROXY:-}
+      - TG_ACCOUNT=${TG_ACCOUNT:-my_account}
+    networks:
+      - tg_network
+    restart: unless-stopped
+    command: ["tg-signer", "monitor", "run", "my_monitor"]
+    # 默认不启动，需要时手动启用
+    profiles:
+      - monitor

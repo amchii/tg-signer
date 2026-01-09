@@ -1,21 +1,59 @@
+# tg-signer Docker Compose 配置
+# 使用方法:
+#   docker compose up -d           # 启动所有服务
+#   docker compose up -d webui     # 仅启动 WebUI
+#
+# 更完整的示例请参考 docker-compose.example.yml
+
 networks:
-  tg_host:
-    external: false
+  tg_network:
+    driver: bridge
 
 services:
-  tg-signer:
+  # ============================================
+  # WebUI 服务 - 推荐方式
+  # ============================================
+  webui:
+    # 使用预构建镜像 (推荐)
+    image: ghcr.io/htazq/tg-signer:latest-webui
+    # 或本地构建
+    # build:
+    #   context: ..
+    #   dockerfile: docker/Dockerfile.webui
+    #   args:
+    #     TZ: ${TZ:-Asia/Shanghai}
+    container_name: tg-signer-webui
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/opt/tg-signer
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      - TG_PROXY=${TG_PROXY:-}
+      - TG_SIGNER_GUI_AUTHCODE=${AUTH_CODE:-}
+    networks:
+      - tg_network
+    restart: unless-stopped
+
+  # ============================================
+  # 签到服务 - 本地构建方式 (中国镜像加速)
+  # ============================================
+  signer:
     build:
-      context: .
-      dockerfile: CN.Dockerfile
+      context: ..
+      dockerfile: docker/CN.Dockerfile
       args:
         TZ: ${TZ:-Asia/Shanghai}
     container_name: tg-signer
     command: ["/bin/bash", "start.sh"]
     volumes:
-      - $PWD:/opt/tg-signer
+      - ./data:/opt/tg-signer
     environment:
-      - TG_PROXY=socks5://172.17.0.1:7890
+      - TG_PROXY=${TG_PROXY:-socks5://172.17.0.1:7890}
       - TZ=${TZ:-Asia/Shanghai}
     networks:
-      - tg_host
+      - tg_network
     restart: unless-stopped
+    # 默认不启动，根据需要启用
+    profiles:
+      - cli
