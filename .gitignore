@@ -123,3 +123,4 @@ _test*.json
 .nicegui
 
 .agent
+AGENTS.md

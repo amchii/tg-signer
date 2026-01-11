@@ -358,7 +358,6 @@ class BaseUserWorker(Generic[ConfigT]):
         return signs
 
     def list_(self):
-        print_to_user("已配置的任务：")
         for d in self.get_task_list():
             print_to_user(d)
 
