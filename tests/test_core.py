@@ -1,10 +1,12 @@
 import asyncio
 import pathlib
+from types import SimpleNamespace
 
 import pytest
 
 from tg_signer.core import (
     BaseUserWorker,
+    UserSigner,
     get_client,
 )
 
@@ -22,6 +24,8 @@ def _clear_client_state():
     core._CLIENT_INSTANCES.clear()
     core._CLIENT_REFS.clear()
     core._CLIENT_ASYNC_LOCKS.clear()
+    core._LOGIN_ASYNC_LOCKS.clear()
+    core._LOGIN_USERS.clear()
 
 
 def test_get_client_caching(tmp_path):
@@ -109,3 +113,73 @@ async def test_client_context_manager_reference_counting_and_start_stop(
 
     # instance should be removed from cache after stop
     assert key not in core._CLIENT_INSTANCES
+
+
+@pytest.mark.asyncio
+async def test_login_bootstrap_is_shared_between_concurrent_workers(
+    monkeypatch, tmp_path
+):
+    """Concurrent workers with the same account should only perform one
+    get_me/get_dialogs login bootstrap.
+    """
+    import tg_signer.core as core
+
+    _clear_client_state()
+    calls = {"get_me": 0, "get_dialogs": 0, "save_session_string": 0}
+
+    async def fake_start(self):
+        await asyncio.sleep(0)
+
+    async def fake_stop(self):
+        await asyncio.sleep(0)
+
+    async def fake_get_me(self):
+        calls["get_me"] += 1
+        await asyncio.sleep(0)
+        return SimpleNamespace(id=123456)
+
+    async def fake_get_dialogs(self, num_of_dialogs):
+        del num_of_dialogs
+        calls["get_dialogs"] += 1
+        chat = SimpleNamespace(
+            id=10001,
+            title="test-chat",
+            type="private",
+            username=None,
+            first_name="test",
+            last_name=None,
+        )
+        yield SimpleNamespace(chat=chat)
+
+    async def fake_save_session_string(self):
+        calls["save_session_string"] += 1
+        await asyncio.sleep(0)
+
+    monkeypatch.setattr(core.Client, "start", fake_start)
+    monkeypatch.setattr(core.Client, "stop", fake_stop)
+    monkeypatch.setattr(core.Client, "get_me", fake_get_me)
+    monkeypatch.setattr(core.Client, "get_dialogs", fake_get_dialogs)
+    monkeypatch.setattr(core.Client, "save_session_string", fake_save_session_string)
+
+    signer1 = UserSigner(
+        task_name="task_a",
+        account="acct",
+        session_dir=tmp_path,
+        workdir=tmp_path / ".signer",
+    )
+    signer2 = UserSigner(
+        task_name="task_b",
+        account="acct",
+        session_dir=tmp_path,
+        workdir=tmp_path / ".signer",
+    )
+
+    await asyncio.gather(
+        signer1.login(num_of_dialogs=20, print_chat=False),
+        signer2.login(num_of_dialogs=20, print_chat=False),
+    )
+
+    assert calls["get_me"] == 1
+    assert calls["get_dialogs"] == 1
+    assert calls["save_session_string"] == 1
+    assert signer1.user.id == signer2.user.id == 123456

@@ -109,6 +109,11 @@ _CLIENT_INSTANCES: dict[str, "Client"] = {}
 _CLIENT_REFS: defaultdict[str, int] = defaultdict(int)
 _CLIENT_ASYNC_LOCKS: dict[str, asyncio.Lock] = {}
 
+# login bootstrap state keyed by account key. This prevents concurrent tasks
+# from repeatedly calling get_me/get_dialogs for the same account.
+_LOGIN_ASYNC_LOCKS: dict[str, asyncio.Lock] = {}
+_LOGIN_USERS: dict[str, User] = {}
+
 
 class Client(BaseClient):
     def __init__(self, name: str, *args, **kwargs):
@@ -371,46 +376,63 @@ class BaseUserWorker(Generic[ConfigT]):
     async def login(self, num_of_dialogs=20, print_chat=True):
         self.log("开始登录...")
         app = self.app
-        async with app:
-            me = await app.get_me()
-            self.set_me(me)
-            latest_chats = []
-            async for dialog in app.get_dialogs(num_of_dialogs):
-                chat = dialog.chat
-                latest_chats.append(
-                    {
-                        "id": chat.id,
-                        "title": chat.title,
-                        "type": chat.type,
-                        "username": chat.username,
-                        "first_name": chat.first_name,
-                        "last_name": chat.last_name,
-                    }
-                )
-                if print_chat:
-                    print_to_user(readable_chat(chat))
+        key = app.key
+        lock = _LOGIN_ASYNC_LOCKS.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            _LOGIN_ASYNC_LOCKS[key] = lock
 
-            with open(
-                self.get_user_dir(me).joinpath("latest_chats.json"),
-                "w",
-                encoding="utf-8",
-            ) as fp:
-                json.dump(
-                    latest_chats,
-                    fp,
-                    indent=4,
-                    default=Object.default,
-                    ensure_ascii=False,
-                )
-            await self.app.save_session_string()
+        async with lock:
+            me = _LOGIN_USERS.get(key)
+            if me is None:
+                async with app:
+                    me = await app.get_me()
+                    latest_chats = []
+                    async for dialog in app.get_dialogs(num_of_dialogs):
+                        chat = dialog.chat
+                        latest_chats.append(
+                            {
+                                "id": chat.id,
+                                "title": chat.title,
+                                "type": chat.type,
+                                "username": chat.username,
+                                "first_name": chat.first_name,
+                                "last_name": chat.last_name,
+                            }
+                        )
+                        if print_chat:
+                            print_to_user(readable_chat(chat))
+
+                    with open(
+                        self.get_user_dir(me).joinpath("latest_chats.json"),
+                        "w",
+                        encoding="utf-8",
+                    ) as fp:
+                        json.dump(
+                            latest_chats,
+                            fp,
+                            indent=4,
+                            default=Object.default,
+                            ensure_ascii=False,
+                        )
+                    await self.app.save_session_string()
+                _LOGIN_USERS[key] = me
+            else:
+                self.log("检测到同账号已完成登录初始化，复用已有会话信息")
+            self.set_me(me)
 
     async def logout(self):
         self.log("开始登出...")
         is_authorized = await self.app.connect()
         if not is_authorized:
             await self.app.storage.delete()
+            _LOGIN_USERS.pop(self.app.key, None)
+            self.user = None
             return None
-        return await self.app.log_out()
+        result = await self.app.log_out()
+        _LOGIN_USERS.pop(self.app.key, None)
+        self.user = None
+        return result
 
     async def send_message(
         self, chat_id: Union[int, str], text: str, delete_after: int = None, **kwargs
