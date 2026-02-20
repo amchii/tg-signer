@@ -26,6 +26,8 @@ def _clear_client_state():
     core._CLIENT_ASYNC_LOCKS.clear()
     core._LOGIN_ASYNC_LOCKS.clear()
     core._LOGIN_USERS.clear()
+    core._API_ASYNC_LOCKS.clear()
+    core._API_LAST_CALL_AT.clear()
 
 
 def test_get_client_caching(tmp_path):
@@ -183,3 +185,83 @@ async def test_login_bootstrap_is_shared_between_concurrent_workers(
     assert calls["get_dialogs"] == 1
     assert calls["save_session_string"] == 1
     assert signer1.user.id == signer2.user.id == 123456
+
+
+@pytest.mark.asyncio
+async def test_call_telegram_api_retries_floodwait(monkeypatch, tmp_path):
+    import tg_signer.core as core
+
+    _clear_client_state()
+    monkeypatch.setattr(core, "_API_MIN_INTERVAL_SECONDS", 0.0)
+    monkeypatch.setattr(core, "_API_FLOODWAIT_PADDING_SECONDS", 0.0)
+    monkeypatch.setattr(core, "_API_MAX_FLOODWAIT_RETRIES", 2)
+
+    waits = []
+    real_sleep = core.asyncio.sleep
+
+    async def fake_sleep(seconds):
+        waits.append(seconds)
+        await real_sleep(0)
+
+    monkeypatch.setattr(core.asyncio, "sleep", fake_sleep)
+
+    signer = UserSigner(
+        task_name="task",
+        account="acct",
+        session_dir=tmp_path,
+        workdir=tmp_path / ".signer",
+    )
+
+    called = 0
+
+    async def flaky_api():
+        nonlocal called
+        called += 1
+        if called == 1:
+            raise core.errors.FloodWait(2)
+        return "ok"
+
+    result = await signer._call_telegram_api("test", flaky_api)
+
+    assert result == "ok"
+    assert called == 2
+    assert waits == [2]
+
+
+@pytest.mark.asyncio
+async def test_call_telegram_api_is_serialized_for_same_account(monkeypatch, tmp_path):
+    import tg_signer.core as core
+
+    _clear_client_state()
+    monkeypatch.setattr(core, "_API_MIN_INTERVAL_SECONDS", 0.0)
+
+    signer1 = UserSigner(
+        task_name="task_a",
+        account="acct",
+        session_dir=tmp_path,
+        workdir=tmp_path / ".signer",
+    )
+    signer2 = UserSigner(
+        task_name="task_b",
+        account="acct",
+        session_dir=tmp_path,
+        workdir=tmp_path / ".signer",
+    )
+
+    active = 0
+    max_active = 0
+
+    async def critical_api():
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        await asyncio.sleep(0)
+        active -= 1
+        return "done"
+
+    await asyncio.gather(
+        signer1._call_telegram_api("critical", critical_api),
+        signer2._call_telegram_api("critical", critical_api),
+    )
+
+    assert max_active == 1

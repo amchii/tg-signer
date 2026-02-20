@@ -10,7 +10,9 @@ from datetime import datetime, timedelta, timezone
 from datetime import time as dt_time
 from typing import (
     Annotated,
+    Awaitable,
     BinaryIO,
+    Callable,
     Generic,
     List,
     Optional,
@@ -113,6 +115,12 @@ _CLIENT_ASYNC_LOCKS: dict[str, asyncio.Lock] = {}
 # from repeatedly calling get_me/get_dialogs for the same account.
 _LOGIN_ASYNC_LOCKS: dict[str, asyncio.Lock] = {}
 _LOGIN_USERS: dict[str, User] = {}
+
+_API_ASYNC_LOCKS: dict[str, asyncio.Lock] = {}
+_API_LAST_CALL_AT: dict[str, float] = {}
+_API_MIN_INTERVAL_SECONDS = 0.35
+_API_FLOODWAIT_PADDING_SECONDS = 0.5
+_API_MAX_FLOODWAIT_RETRIES = 2
 
 
 class Client(BaseClient):
@@ -235,6 +243,7 @@ def make_dirs(path: pathlib.Path, exist_ok=True):
 
 
 ConfigT = TypeVar("ConfigT", bound=BaseJSONConfig)
+ApiCallResultT = TypeVar("ApiCallResultT")
 
 
 class BaseUserWorker(Generic[ConfigT]):
@@ -331,6 +340,49 @@ class BaseUserWorker(Generic[ConfigT]):
         else:
             logger.debug(msg, **kwargs)
 
+    async def _call_telegram_api(
+        self,
+        operation: str,
+        call: Callable[[], Awaitable[ApiCallResultT]],
+        *,
+        retry_on_floodwait: bool = True,
+    ) -> ApiCallResultT:
+        key = self.app.key
+        lock = _API_ASYNC_LOCKS.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            _API_ASYNC_LOCKS[key] = lock
+
+        retries_left = _API_MAX_FLOODWAIT_RETRIES
+        while True:
+            async with lock:
+                loop = asyncio.get_running_loop()
+                last_called_at = _API_LAST_CALL_AT.get(key)
+                if last_called_at is not None:
+                    wait_for = _API_MIN_INTERVAL_SECONDS - (
+                        loop.time() - last_called_at
+                    )
+                    if wait_for > 0:
+                        await asyncio.sleep(wait_for)
+                try:
+                    result = await call()
+                    _API_LAST_CALL_AT[key] = loop.time()
+                    return result
+                except errors.FloodWait as e:
+                    _API_LAST_CALL_AT[key] = loop.time()
+                    if not retry_on_floodwait or retries_left <= 0:
+                        raise
+                    retries_left -= 1
+                    wait_seconds = (
+                        max(float(getattr(e, "value", 0) or 0), 0)
+                        + _API_FLOODWAIT_PADDING_SECONDS
+                    )
+                    self.log(
+                        f"{operation} 触发 FloodWait，等待 {wait_seconds:.1f}s 后重试（剩余重试 {retries_left} 次）",
+                        level="WARNING",
+                    )
+                    await asyncio.sleep(wait_seconds)
+
     def ask_for_config(self):
         raise NotImplementedError
 
@@ -386,22 +438,29 @@ class BaseUserWorker(Generic[ConfigT]):
             me = _LOGIN_USERS.get(key)
             if me is None:
                 async with app:
-                    me = await app.get_me()
-                    latest_chats = []
-                    async for dialog in app.get_dialogs(num_of_dialogs):
-                        chat = dialog.chat
-                        latest_chats.append(
-                            {
-                                "id": chat.id,
-                                "title": chat.title,
-                                "type": chat.type,
-                                "username": chat.username,
-                                "first_name": chat.first_name,
-                                "last_name": chat.last_name,
-                            }
-                        )
-                        if print_chat:
-                            print_to_user(readable_chat(chat))
+                    me = await self._call_telegram_api("users.GetFullUser", app.get_me)
+
+                    async def load_latest_chats():
+                        latest_chats = []
+                        async for dialog in app.get_dialogs(num_of_dialogs):
+                            chat = dialog.chat
+                            latest_chats.append(
+                                {
+                                    "id": chat.id,
+                                    "title": chat.title,
+                                    "type": chat.type,
+                                    "username": chat.username,
+                                    "first_name": chat.first_name,
+                                    "last_name": chat.last_name,
+                                }
+                            )
+                            if print_chat:
+                                print_to_user(readable_chat(chat))
+                        return latest_chats
+
+                    latest_chats = await self._call_telegram_api(
+                        "messages.GetDialogs", load_latest_chats
+                    )
 
                     with open(
                         self.get_user_dir(me).joinpath("latest_chats.json"),
@@ -415,7 +474,9 @@ class BaseUserWorker(Generic[ConfigT]):
                             default=Object.default,
                             ensure_ascii=False,
                         )
-                    await self.app.save_session_string()
+                    await self._call_telegram_api(
+                        "auth.ExportAuthorization", self.app.save_session_string
+                    )
                 _LOGIN_USERS[key] = me
             else:
                 self.log("检测到同账号已完成登录初始化，复用已有会话信息")
@@ -445,14 +506,17 @@ class BaseUserWorker(Generic[ConfigT]):
         :param kwargs:
         :return:
         """
-        message = await self.app.send_message(chat_id, text, **kwargs)
+        message = await self._call_telegram_api(
+            "messages.SendMessage",
+            lambda: self.app.send_message(chat_id, text, **kwargs),
+        )
         if delete_after is not None:
             self.log(
                 f"Message「{text}」 to {chat_id} will be deleted after {delete_after} seconds."
             )
             self.log("Waiting...")
             await asyncio.sleep(delete_after)
-            await message.delete()
+            await self._call_telegram_api("messages.DeleteMessages", message.delete)
             self.log(f"Message「{text}」 to {chat_id} deleted!")
         return message
 
@@ -477,14 +541,17 @@ class BaseUserWorker(Generic[ConfigT]):
                 f"Warning, emoji should be one of {', '.join(DICE_EMOJIS)}",
                 level="WARNING",
             )
-        message = await self.app.send_dice(chat_id, emoji, **kwargs)
+        message = await self._call_telegram_api(
+            "messages.SendMedia",
+            lambda: self.app.send_dice(chat_id, emoji, **kwargs),
+        )
         if message and delete_after is not None:
             self.log(
                 f"Dice「{emoji}」 to {chat_id} will be deleted after {delete_after} seconds."
             )
             self.log("Waiting...")
             await asyncio.sleep(delete_after)
-            await message.delete()
+            await self._call_telegram_api("messages.DeleteMessages", message.delete)
             self.log(f"Dice「{emoji}」 to {chat_id} deleted!")
         return message
 
@@ -1003,8 +1070,11 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         **kwargs,
     ):
         try:
-            await client.request_callback_answer(
-                chat_id, message_id, callback_data=callback_data, **kwargs
+            await self._call_telegram_api(
+                "messages.GetBotCallbackAnswer",
+                lambda: client.request_callback_answer(
+                    chat_id, message_id, callback_data=callback_data, **kwargs
+                ),
             )
             self.log("点击完成")
         except (errors.BadRequest, TimeoutError) as e:
@@ -1029,10 +1099,13 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                     seconds=random.randint(0, random_seconds)
                 )
                 results.append({"at": next_dt.isoformat(), "text": text})
-                await self.app.send_message(
-                    chat_id,
-                    text,
-                    schedule_date=next_dt,
+                await self._call_telegram_api(
+                    "messages.SendScheduledMessage",
+                    lambda schedule_date=next_dt: self.app.send_message(
+                        chat_id,
+                        text,
+                        schedule_date=schedule_date,
+                    ),
                 )
                 await asyncio.sleep(0.1)
                 print_to_user(f"已配置次数：{n + 1}")
@@ -1043,7 +1116,10 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         if self.user is None:
             await self.login(print_chat=False)
         async with self.app:
-            messages = await self.app.get_scheduled_messages(chat_id)
+            messages = await self._call_telegram_api(
+                "messages.GetScheduledHistory",
+                lambda: self.app.get_scheduled_messages(chat_id),
+            )
             for message in messages:
                 print_to_user(f"{message.date}: {message.text}")
 
