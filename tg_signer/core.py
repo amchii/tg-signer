@@ -31,7 +31,7 @@ from pyrogram.enums import ChatMembersFilter, ChatType
 from pyrogram.handlers import EditedMessageHandler, MessageHandler
 from pyrogram.methods.utilities.idle import idle
 from pyrogram.session import Session
-from pyrogram.storage import MemoryStorage
+from pyrogram.storage import SQLiteStorage
 from pyrogram.types import (
     Chat,
     InlineKeyboardButton,
@@ -130,7 +130,12 @@ class Client(BaseClient):
         self.key = key or str(pathlib.Path(self.workdir).joinpath(self.name).resolve())
         if self.in_memory and not self.session_string:
             self.load_session_string()
-            self.storage = MemoryStorage(self.name, self.session_string)
+            self.storage = SQLiteStorage(
+                name=self.name,
+                workdir=self.workdir,
+                session_string=self.session_string,
+                in_memory=True,
+            )
 
     async def __aenter__(self):
         lock = _CLIENT_ASYNC_LOCKS.get(self.key)
@@ -442,7 +447,7 @@ class BaseUserWorker(Generic[ConfigT]):
 
                     async def load_latest_chats():
                         latest_chats = []
-                        async for dialog in app.get_dialogs(num_of_dialogs):
+                        async for dialog in app.get_dialogs(limit=num_of_dialogs):
                             chat = dialog.chat
                             latest_chats.append(
                                 {
