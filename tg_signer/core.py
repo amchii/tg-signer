@@ -779,23 +779,26 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
             print_to_user(OPENAI_USE_PROMPT)
         return config
 
-    @classmethod
-    def _validate_sign_at(cls, sign_at_str: str) -> Optional[str]:
+    def _validate_sign_at(
+        self,
+        sign_at_str: str,
+    ) -> Optional[str]:
         sign_at_str = sign_at_str.replace("：", ":").strip()
 
         try:
             sign_at = dt_time.fromisoformat(sign_at_str)
-            crontab_expr = cls._time_to_crontab(sign_at)
+            crontab_expr = self._time_to_crontab(sign_at)
         except ValueError:
             try:
                 croniter(sign_at_str)
                 crontab_expr = sign_at_str
             except CroniterBadCronError:
+                self.log(f"时间格式错误: {sign_at_str}", level="error")
                 return None
         return crontab_expr
 
     @staticmethod
-    def _time_to_crontab(sign_at: time) -> str:
+    def _time_to_crontab(sign_at: dt_time) -> str:
         return f"{sign_at.minute} {sign_at.hour} * * *"
 
     def load_sign_record(self):
