@@ -140,8 +140,8 @@ async def test_login_bootstrap_is_shared_between_concurrent_workers(
         await asyncio.sleep(0)
         return SimpleNamespace(id=123456)
 
-    async def fake_get_dialogs(self, num_of_dialogs):
-        del num_of_dialogs
+    async def fake_get_dialogs(self, limit):
+        del limit
         calls["get_dialogs"] += 1
         chat = SimpleNamespace(
             id=10001,
