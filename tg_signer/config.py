@@ -68,13 +68,31 @@ class BaseJSONConfig(BaseModel):
         return obj
 
     @classmethod
-    def load(cls, d: dict) -> Optional[Tuple[Self, bool]]:
-        if instance := cls.valid(d):
-            return instance, False
+    def load(cls, d: dict) -> Tuple[Self, bool]:
+        """
+        加载配置，支持从旧版本自动升级。
+        如果所有版本都校验失败，将抛出最后一次尝试的 ValidationError。
+        """
+        errors = []
+        try:
+            return cls.model_validate(d), False
+        except (ValidationError, TypeError) as e:
+            errors.append((cls.__name__, e))
+
         for old in cls.olds or []:
-            if old_inst := old.valid(d):
-                return old.to_current(old_inst), True
-        return None
+            try:
+                return old.to_current(old.model_validate(d)), True
+            except (ValidationError, TypeError) as e:
+                errors.append((old.__name__, e))
+
+        # 如果全部失败，抛出汇总错误
+        if len(errors) == 1:
+            raise errors[0][1]
+        
+        err_msg = "配置校验失败:\n"
+        for name, err in errors:
+            err_msg += f"  - {name}: {err}\n"
+        raise ValueError(err_msg)
 
 
 class SignConfigV1(BaseJSONConfig):

@@ -90,7 +90,17 @@ def pretty_json(data: Dict[str, object]) -> str:
 
 
 def notify_error(exc: Exception) -> None:
-    ui.notify(f"{exc}", type="negative")
+    msg = str(exc)
+    if "validation error" in msg.lower():
+        # 尝试美化 pydantic 的错误信息
+        ui.notify("配置校验失败，请检查数据格式", type="negative")
+        with ui.dialog() as dialog, ui.card():
+            ui.label("详细错误信息").classes("text-lg font-bold")
+            ui.code(msg).classes("w-full")
+            ui.button("关闭", on_click=dialog.close)
+        dialog.open()
+    else:
+        ui.notify(msg, type="negative")
 
 
 class BaseConfigBlock:
@@ -193,11 +203,21 @@ class BaseConfigBlock:
         if not target:
             ui.notify("请先填写配置名称", type="warning")
             return
+        
+        content = self.editor.properties["content"]
+        json_data = content.get("json")
+        if json_data is None and content.get("text"):
+            try:
+                json_data = json.loads(content["text"])
+            except json.JSONDecodeError as exc:
+                notify_error(ValueError(f"JSON 语法错误: {exc}"))
+                return
+
         try:
             save_config(
                 self.kind,
                 target,
-                self.editor.properties["content"]["json"] or "{}",
+                json_data or {},
                 workdir=state.workdir,
             )
             self.refresh_options()

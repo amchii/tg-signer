@@ -102,10 +102,7 @@ def save_config(
         cfg = content
     else:
         data = json.loads(content) if isinstance(content, str) else content
-        loaded = cfg_cls.load(data)
-        if loaded is None:
-            raise ValueError("配置校验失败")
-        cfg, _ = loaded
+        cfg, _ = cfg_cls.load(data)
     config_file = _config_path(kind, name, workdir)
     config_file.parent.mkdir(parents=True, exist_ok=True)
     with open(config_file, "w", encoding="utf-8") as fp:
