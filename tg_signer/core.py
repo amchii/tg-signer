@@ -1159,10 +1159,20 @@ class UserMonitor(BaseUserWorker[MonitorConfig]):
             )
             or None
         )
+        exclude_user_ids = (
+            input_(
+                "排除来自特定用户ID的消息（多个用逗号隔开, 不排除任何用户直接回车）: "
+            )
+            or None
+        )
         always_ignore_me = input_("总是忽略自己发送的消息（y/N）: ").lower() == "y"
         if from_user_ids:
             from_user_ids = [
                 i if i.startswith("@") else int(i) for i in from_user_ids.split(",")
+            ]
+        if exclude_user_ids:
+            exclude_user_ids = [
+                i if i.startswith("@") else int(i) for i in exclude_user_ids.split(",")
             ]
         default_send_text = input_("默认发送文本（不需要则回车）: ") or None
         ai_reply = False
@@ -1241,6 +1251,7 @@ class UserMonitor(BaseUserWorker[MonitorConfig]):
                 "rule": rule,
                 "rule_value": rule_value,
                 "from_user_ids": from_user_ids,
+                "exclude_user_ids": exclude_user_ids,
                 "always_ignore_me": always_ignore_me,
                 "default_send_text": default_send_text,
                 "ai_reply": ai_reply,
@@ -1325,6 +1336,9 @@ class UserMonitor(BaseUserWorker[MonitorConfig]):
 
     async def on_message(self, client, message: Message):
         for match_cfg in self.config.match_cfgs:
+            if match_cfg.match_chat(message.chat) and match_cfg.is_excluded(message):
+                self.log(f"用户「{message.from_user.username or message.from_user.id}」在排除列表中，跳过处理")
+                continue
             if not match_cfg.match(message):
                 continue
             self.log(f"匹配到监控项：{match_cfg}")

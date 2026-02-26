@@ -355,6 +355,9 @@ class MatchConfig(BaseJSONConfig):
     from_user_ids: Optional[List[Union[int, str]]] = (
         None  # 发送者id或username，为空时，匹配所有人
     )
+    exclude_user_ids: Optional[List[Union[int, str]]] = (
+        None  # 排除的发送者id或username，为空时，不排除任何人
+    )
     always_ignore_me: bool = False  # 总是忽略自己发送的消息
     default_send_text: Optional[str] = None  # 默认发送内容
     ai_reply: bool = False  # 是否使用AI回复
@@ -379,6 +382,8 @@ class MatchConfig(BaseJSONConfig):
 
     @cached_property
     def from_user_set(self):
+        if not self.from_user_ids:
+            return set()
         return {
             (
                 "me"
@@ -390,11 +395,43 @@ class MatchConfig(BaseJSONConfig):
             for u in self.from_user_ids
         }
 
+    @cached_property
+    def exclude_user_set(self):
+        if not self.exclude_user_ids:
+            return set()
+        return {
+            (
+                "me"
+                if u in ["me", "self"]
+                else u.lower().strip("@")
+                if isinstance(u, str)
+                else u
+            )
+            for u in self.exclude_user_ids
+        }
+
+    def is_excluded(self, message: "Message") -> bool:
+        if not message.from_user:
+            return False
+        if self.always_ignore_me and message.from_user.is_self:
+            return True
+        if not self.exclude_user_ids:
+            return False
+        return (
+            message.from_user.id in self.exclude_user_set
+            or (
+                message.from_user.username
+                and message.from_user.username.lower() in self.exclude_user_set
+            )
+            or ("me" in self.exclude_user_set and message.from_user.is_self)
+        )
+
     def match_user(self, message: "Message"):
         if not message.from_user:
             return True
-        if self.always_ignore_me and message.from_user.is_self:
+        if self.is_excluded(message):
             return False
+
         if not self.from_user_ids:
             return True
         return (

@@ -47,6 +47,7 @@ MONITOR_TEMPLATE: Dict[str, object] = {
             "rule": "contains",
             "rule_value": "关键词",
             "from_user_ids": None,
+            "exclude_user_ids": None,
             "always_ignore_me": False,
             "default_send_text": "自动回复",
             "ai_reply": False,
