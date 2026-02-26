@@ -381,7 +381,6 @@ tg-signer monitor run my_monitor
 #### 0.8.5
 - "kurigram>=2.2.19,<2.3.0"
 - 单账户多任务时进行并发请求限流
-
 #### 0.8.4
 - 新增 WebGUI
 - 新增`--log-dir`选项，更改日志默认目录为`logs`，warning和error分为单独文件
