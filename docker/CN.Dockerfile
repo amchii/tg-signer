@@ -23,7 +23,7 @@ ARG TZ=Asia/Shanghai
 ENV TZ=${TZ}
 ENV DEBIAN_FRONTEND=noninteractive
 COPY --from=builder /build/*.whl /tmp/
-COPY --from=builder /etc/apt/sources.list.d/debian.sources/* /etc/apt/sources.list.d/debian.sources/
+COPY --from=builder /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list.d/debian.sources
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends tzdata && \
