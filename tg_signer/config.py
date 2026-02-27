@@ -13,7 +13,7 @@ from typing import (
     Union,
 )
 
-from pydantic import AnyHttpUrl, BaseModel, ValidationError
+from pydantic import AnyHttpUrl, BaseModel, Field, ValidationError
 from pyrogram.types import Chat, Message
 from typing_extensions import Self, TypeAlias
 
@@ -391,6 +391,11 @@ class MatchConfig(BaseJSONConfig):
     )
     push_via_server_chan: bool = False  # 将消息通过server酱推送
     server_chan_send_key: Optional[str] = None  # server酱的sendkey
+    cooldown: Optional[int] = None  # 冷却时间，单位秒
+    probability: Optional[int] = Field(None, ge=1, le=100)  # 触发概率，1-100的正整数
+    max_daily: Optional[int] = Field(None, ge=1)  # 每日最大上限
+    max_weekly: Optional[int] = Field(None, ge=1)  # 每周最大上限
+    max_monthly: Optional[int] = Field(None, ge=1)  # 每月最大上限
 
     def __str__(self):
         return (

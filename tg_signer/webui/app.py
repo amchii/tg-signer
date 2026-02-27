@@ -59,6 +59,11 @@ MONITOR_TEMPLATE: Dict[str, object] = {
             "external_forwards": None,
             "push_via_server_chan": False,
             "server_chan_send_key": None,
+            "cooldown": None,
+            "probability": None,
+            "max_daily": None,
+            "max_weekly": None,
+            "max_monthly": None,
         }
     ]
 }

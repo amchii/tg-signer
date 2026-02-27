@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -1138,6 +1139,106 @@ class UserMonitor(BaseUserWorker[MonitorConfig]):
     cfg_cls = MonitorConfig
     config: MonitorConfig
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._last_triggered: dict[int, float] = {}
+        self._counts_file = self.task_dir / "counts.json"
+
+    def _get_config_id(self, match_cfg: MatchConfig) -> str:
+        # Use a hash of the config properties to identify it uniquely
+        data = match_cfg.model_dump_json()
+        return hashlib.md5(data.encode()).hexdigest()
+
+    def _load_counts(self) -> dict:
+        if not self._counts_file.exists():
+            return {}
+        try:
+            with open(self._counts_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return {}
+
+    def _save_counts(self, counts: dict):
+        with open(self._counts_file, "w", encoding="utf-8") as f:
+            json.dump(counts, f, ensure_ascii=False, indent=2)
+
+    def _check_limits(self, match_cfg: MatchConfig) -> bool:
+        if not any([match_cfg.max_daily, match_cfg.max_weekly, match_cfg.max_monthly]):
+            return True
+
+        cfg_id = self._get_config_id(match_cfg)
+        counts = self._load_counts()
+        if cfg_id not in counts:
+            return True
+
+        now = datetime.now()
+        item = counts[cfg_id]
+
+        # Check daily
+        if match_cfg.max_daily:
+            day_str = now.strftime("%Y-%m-%d")
+            daily = item.get("daily", {})
+            if daily.get("date") == day_str and daily.get("count", 0) >= match_cfg.max_daily:
+                self.log(f"已达到每日回复上限 ({match_cfg.max_daily})，跳过")
+                return False
+
+        # Check weekly
+        if match_cfg.max_weekly:
+            week_str = now.strftime("%Y-W%V")
+            weekly = item.get("weekly", {})
+            if weekly.get("week") == week_str and weekly.get("count", 0) >= match_cfg.max_weekly:
+                self.log(f"已达到每周回复上限 ({match_cfg.max_weekly})，跳过")
+                return False
+
+        # Check monthly
+        if match_cfg.max_monthly:
+            month_str = now.strftime("%Y-%m")
+            monthly = item.get("monthly", {})
+            if monthly.get("month") == month_str and monthly.get("count", 0) >= match_cfg.max_monthly:
+                self.log(f"已达到每月回复上限 ({match_cfg.max_monthly})，跳过")
+                return False
+
+        return True
+
+    def _inc_count(self, match_cfg: MatchConfig):
+        if not any([match_cfg.max_daily, match_cfg.max_weekly, match_cfg.max_monthly]):
+            return
+
+        cfg_id = self._get_config_id(match_cfg)
+        counts = self._load_counts()
+        now = datetime.now()
+        
+        if cfg_id not in counts:
+            counts[cfg_id] = {}
+        
+        item = counts[cfg_id]
+        
+        # Update daily
+        day_str = now.strftime("%Y-%m-%d")
+        daily = item.get("daily", {"date": day_str, "count": 0})
+        if daily["date"] != day_str:
+            daily = {"date": day_str, "count": 0}
+        daily["count"] += 1
+        item["daily"] = daily
+
+        # Update weekly
+        week_str = now.strftime("%Y-W%V")
+        weekly = item.get("weekly", {"week": week_str, "count": 0})
+        if weekly["week"] != week_str:
+            weekly = {"week": week_str, "count": 0}
+        weekly["count"] += 1
+        item["weekly"] = weekly
+
+        # Update monthly
+        month_str = now.strftime("%Y-%m")
+        monthly = item.get("monthly", {"month": month_str, "count": 0})
+        if monthly["month"] != month_str:
+            monthly = {"month": month_str, "count": 0}
+        monthly["count"] += 1
+        item["monthly"] = monthly
+
+        self._save_counts(counts)
+
     def ask_one(self):
         input_ = UserInput()
         chat_id = (input_("Chat ID（登录时最近对话输出中的ID）: ")).strip()
@@ -1221,6 +1322,27 @@ class UserMonitor(BaseUserWorker[MonitorConfig]):
                 or None
             )
 
+        cooldown = input_("冷却时间（秒，不填则无冷却）: ").strip()
+        if cooldown:
+            cooldown = int(cooldown)
+        else:
+            cooldown = None
+
+        probability = input_("触发概率（1-100，不填则为100%）: ").strip()
+        if probability:
+            probability = int(probability)
+        else:
+            probability = None
+
+        max_daily = input_("每日最大回复上限（不填则无限制）: ").strip()
+        max_daily = int(max_daily) if max_daily else None
+
+        max_weekly = input_("每周最大回复上限（不填则无限制）: ").strip()
+        max_weekly = int(max_weekly) if max_weekly else None
+
+        max_monthly = input_("每月最大回复上限（不填则无限制）: ").strip()
+        max_monthly = int(max_monthly) if max_monthly else None
+
         forward_to_external = (
             input_("是否需要转发到外部（UDP, Http）(y/N): ").lower() == "y"
         )
@@ -1262,6 +1384,11 @@ class UserMonitor(BaseUserWorker[MonitorConfig]):
                 "push_via_server_chan": push_via_server_chan,
                 "server_chan_send_key": server_chan_send_key,
                 "external_forwards": external_forwards,
+                "cooldown": cooldown,
+                "probability": probability,
+                "max_daily": max_daily,
+                "max_weekly": max_weekly,
+                "max_monthly": max_monthly,
             }
         )
 
@@ -1339,8 +1466,22 @@ class UserMonitor(BaseUserWorker[MonitorConfig]):
             if match_cfg.match_chat(message.chat) and match_cfg.is_excluded(message):
                 self.log(f"用户「{message.from_user.username or message.from_user.id}」在排除列表中，跳过处理")
                 continue
+
+            if match_cfg.cooldown:
+                last_time = self._last_triggered.get(id(match_cfg), 0)
+                if time.time() - last_time < match_cfg.cooldown:
+                    continue
+            
+            if not self._check_limits(match_cfg):
+                continue
+
             if not match_cfg.match(message):
                 continue
+
+            if match_cfg.probability and random.randint(1, 100) > match_cfg.probability:
+                self.log(f"根据概率({match_cfg.probability}%)跳过处理消息")
+                continue
+
             self.log(f"匹配到监控项：{match_cfg}")
             await self.forward_to_external(match_cfg, message)
             try:
@@ -1355,6 +1496,11 @@ class UserMonitor(BaseUserWorker[MonitorConfig]):
                         send_text,
                         delete_after=match_cfg.delete_after,
                     )
+                
+                if match_cfg.cooldown:
+                    self._last_triggered[id(match_cfg)] = time.time()
+                
+                self._inc_count(match_cfg)
 
                 if match_cfg.push_via_server_chan:
                     server_chan_send_key = (
