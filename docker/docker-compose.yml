@@ -1,21 +1,24 @@
-networks:
-  tg_host:
-    external: false
+# tg-signer Docker Compose 配置
+#
+# 首次使用请按以下步骤操作：
+#   1. 启动容器: docker compose up -d
+#   2. 进入容器: docker exec -it tg-signer bash
+#   3. 登录 TG: tg-signer login
+#   4. 配置任务: tg-signer run my_task (按提示配置)
+#   5. 退出容器后，修改下方 command 为实际任务名
+#   6. 重启容器: docker compose up -d
 
 services:
   tg-signer:
-    build:
-      context: .
-      dockerfile: CN.Dockerfile
-      args:
-        TZ: ${TZ:-Asia/Shanghai}
+    image: ghcr.io/htazq/tg-signer:latest
     container_name: tg-signer
-    command: ["/bin/bash", "start.sh"]
     volumes:
-      - $PWD:/opt/tg-signer
+      - ./data:/opt/tg-signer
     environment:
-      - TG_PROXY=socks5://172.17.0.1:7890
       - TZ=${TZ:-Asia/Shanghai}
-    networks:
-      - tg_host
+      - TG_PROXY=${TG_PROXY:-}
     restart: unless-stopped
+    # 首次配置时使用 sleep infinity 保持容器运行
+    command: ["sleep", "infinity"]
+    # 配置完成后，改为运行任务（取消下行注释，注释上行）
+    # command: ["tg-signer", "run", "任务名1", "任务名2"]
