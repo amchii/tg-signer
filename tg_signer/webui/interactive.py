@@ -116,6 +116,10 @@ class InteractiveSignerConfig:
                         ui.label(f"#{idx + 1}").classes("font-bold text-gray-500")
                         with ui.column().classes("flex-grow gap-0"):
                             ui.label(f"Chat ID: {chat.chat_id}").classes("font-medium")
+                            if chat.message_thread_id is not None:
+                                ui.label(
+                                    f"Message Thread ID: {chat.message_thread_id}"
+                                ).classes("text-sm text-gray-500")
                             if chat.name:
                                 ui.label(f"Name: {chat.name}").classes(
                                     "text-sm text-gray-500"
@@ -144,6 +148,7 @@ class InteractiveSignerConfig:
     def open_chat_dialog(self, chat: Optional[SignChatV3] = None, index: int = -1):
         # Chat Dialog State
         d_chat_id = chat.chat_id if chat else None
+        d_message_thread_id = chat.message_thread_id if chat else None
         d_name = chat.name if chat else ""
         d_delete_after = chat.delete_after if chat else None
         d_actions: List[ActionT] = list(chat.actions) if chat else []
@@ -246,6 +251,30 @@ class InteractiveSignerConfig:
                 name_input = ui.input(label="备注名称 (可选)", value=d_name).props(
                     "outlined"
                 )
+
+                use_thread_input = ui.switch(
+                    "启用话题（message_thread_id）",
+                    value=d_message_thread_id is not None,
+                )
+
+                thread_id_input = ui.number(
+                    label="message_thread_id",
+                    value=d_message_thread_id,
+                    placeholder="例如 1",
+                ).props("outlined")
+                if d_message_thread_id is None:
+                    thread_id_input.disable()
+
+                def on_toggle_thread(e):
+                    enabled = bool(e.value)
+                    if enabled:
+                        thread_id_input.enable()
+                    else:
+                        thread_id_input.value = None
+                        thread_id_input.disable()
+                    thread_id_input.update()
+
+                use_thread_input.on_value_change(on_toggle_thread)
 
                 del_input = ui.number(
                     label="发送后删除 (秒)",
@@ -389,8 +418,15 @@ class InteractiveSignerConfig:
                             f"第一个动作必须为「{SupportAction.SEND_TEXT.desc}」或「{SupportAction.SEND_DICE.desc}」"
                         )
 
+                    message_thread_id = None
+                    if use_thread_input.value:
+                        if thread_id_input.value in [None, ""]:
+                            raise ValueError("启用话题后必须填写message_thread_id")
+                        message_thread_id = int(thread_id_input.value)
+
                     new_chat = SignChatV3(
                         chat_id=cid,
+                        message_thread_id=message_thread_id,
                         name=name_input.value.strip() or None,
                         delete_after=int(del_input.value) if del_input.value else None,
                         actions=d_actions,

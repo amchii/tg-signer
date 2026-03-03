@@ -1,9 +1,11 @@
 import asyncio
 import pathlib
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
+from tg_signer.config import SendTextAction, SignChatV3
 from tg_signer.core import (
     BaseUserWorker,
     UserSigner,
@@ -265,3 +267,157 @@ async def test_call_telegram_api_is_serialized_for_same_account(monkeypatch, tmp
     )
 
     assert max_active == 1
+
+
+@pytest.mark.asyncio
+async def test_wait_for_send_text_passes_message_thread_id(tmp_path):
+    signer = UserSigner(
+        task_name="task",
+        account="acct",
+        session_dir=tmp_path,
+        workdir=tmp_path / ".signer",
+    )
+    signer.send_message = AsyncMock(return_value=None)
+    chat = SignChatV3(
+        chat_id=-1003763902761,
+        message_thread_id=1,
+        delete_after=10,
+        actions=[SendTextAction(text="checkin")],
+    )
+
+    await signer.wait_for(chat, chat.actions[0])
+
+    signer.send_message.assert_awaited_once_with(
+        -1003763902761,
+        "checkin",
+        10,
+        message_thread_id=1,
+    )
+
+
+@pytest.mark.asyncio
+async def test_on_message_routes_by_chat_id_and_message_thread_id(tmp_path):
+    signer = UserSigner(
+        task_name="task",
+        account="acct",
+        session_dir=tmp_path,
+        workdir=tmp_path / ".signer",
+    )
+    signer.context = signer.ensure_ctx()
+    route_key = signer.get_route_key(-1003763902761, 11)
+    signer.context.sign_chats[route_key].append(
+        SignChatV3(
+            chat_id=-1003763902761,
+            message_thread_id=11,
+            actions=[SendTextAction(text="checkin")],
+        )
+    )
+    message = SimpleNamespace(
+        chat=SimpleNamespace(id=-1003763902761),
+        message_thread_id=11,
+        id=99,
+    )
+
+    await signer._on_message(signer.app, message)
+
+    assert signer.context.chat_messages[route_key][99] is message
+
+
+@pytest.mark.asyncio
+async def test_on_message_falls_back_to_non_thread_route(tmp_path):
+    signer = UserSigner(
+        task_name="task",
+        account="acct",
+        session_dir=tmp_path,
+        workdir=tmp_path / ".signer",
+    )
+    signer.context = signer.ensure_ctx()
+    fallback_key = signer.get_route_key(-1003763902761, None)
+    signer.context.sign_chats[fallback_key].append(
+        SignChatV3(
+            chat_id=-1003763902761,
+            actions=[SendTextAction(text="checkin")],
+        )
+    )
+    message = SimpleNamespace(
+        chat=SimpleNamespace(id=-1003763902761),
+        message_thread_id=22,
+        id=100,
+    )
+
+    await signer._on_message(signer.app, message)
+
+    assert signer.context.chat_messages[fallback_key][100] is message
+
+
+@pytest.mark.asyncio
+async def test_schedule_messages_passes_message_thread_id(monkeypatch, tmp_path):
+    signer = UserSigner(
+        task_name="task",
+        account="acct",
+        session_dir=tmp_path,
+        workdir=tmp_path / ".signer",
+    )
+    signer.user = SimpleNamespace(id=1)
+    calls = []
+
+    class DummyApp:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def send_message(self, chat_id, text, **kwargs):
+            calls.append({"chat_id": chat_id, "text": text, "kwargs": dict(kwargs)})
+            return True
+
+    async def direct_call(_api_name, func):
+        return await func()
+
+    signer.app = DummyApp()
+    monkeypatch.setattr(signer, "_call_telegram_api", direct_call)
+
+    await signer.schedule_messages(
+        -1003763902761,
+        "checkin",
+        "0 6 * * *",
+        next_times=1,
+        random_seconds=0,
+        message_thread_id=1,
+    )
+
+    assert calls[0]["kwargs"]["message_thread_id"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_schedule_messages_calls_chat_level_api(monkeypatch, tmp_path):
+    signer = UserSigner(
+        task_name="task",
+        account="acct",
+        session_dir=tmp_path,
+        workdir=tmp_path / ".signer",
+    )
+    signer.user = SimpleNamespace(id=1)
+    calls = []
+
+    class DummyApp:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get_scheduled_messages(self, chat_id, **kwargs):
+            calls.append({"chat_id": chat_id, "kwargs": dict(kwargs)})
+            return []
+
+    async def direct_call(_api_name, func):
+        return await func()
+
+    signer.app = DummyApp()
+    monkeypatch.setattr(signer, "_call_telegram_api", direct_call)
+
+    await signer.get_schedule_messages(-1003763902761)
+
+    assert calls[0]["kwargs"] == {}

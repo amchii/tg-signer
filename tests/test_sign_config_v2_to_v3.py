@@ -7,6 +7,7 @@ from tg_signer.config import (
     SendDiceAction,
     SendTextAction,
     SignChatV2,
+    SignChatV3,
     SignConfigV1,
     SignConfigV2,
     SignConfigV3,
@@ -39,6 +40,7 @@ class TestSignConfigV2ToCurrent:
 
         chat = v3_config.chats[0]
         assert chat.chat_id == 123
+        assert chat.message_thread_id is None
         assert chat.delete_after == 10
         assert len(chat.actions) == 1
         assert isinstance(chat.actions[0], SendTextAction)
@@ -135,4 +137,13 @@ class TestSignConfigV2ToCurrent:
         assert v3_config.random_seconds == 300
         assert len(v3_config.chats) == 1
         assert v3_config.chats[0].chat_id == 123
+        assert v3_config.chats[0].message_thread_id is None
         assert v3_config.chats[0].actions[0].text == "Old config"
+
+    def test_sign_chat_v3_with_message_thread_id(self):
+        chat = SignChatV3(
+            chat_id=-1001234567890,
+            message_thread_id=1,
+            actions=[SendTextAction(text="checkin")],
+        )
+        assert chat.message_thread_id == 1

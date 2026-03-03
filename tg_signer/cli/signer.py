@@ -264,11 +264,25 @@ def run_once(obj, task_name, num_of_dialogs):
     required=False,
     help="秒, 发送消息后进行删除, 默认不删除, '0'表示立即删除.",
 )
+@click.option(
+    "--message-thread-id",
+    "message_thread_id",
+    type=int,
+    required=False,
+    help="话题ID（message_thread_id）, 不填则发送到非话题会话",
+)
 @click.pass_obj
-def send_text(obj, chat_id, text, delete_after=None):
+def send_text(obj, chat_id, text, delete_after=None, message_thread_id=None):
     singer = get_signer(None, obj)
     click.echo("将发送单次消息")
-    singer.app_run(singer.send_text(chat_id, text, delete_after))
+    singer.app_run(
+        singer.send_text(
+            chat_id,
+            text,
+            delete_after,
+            message_thread_id=message_thread_id,
+        )
+    )
 
 
 @tg_signer.command(
@@ -286,11 +300,25 @@ def send_text(obj, chat_id, text, delete_after=None):
     required=False,
     help="秒, 发送消息后进行删除, 默认不删除, '0'表示立即删除.",
 )
+@click.option(
+    "--message-thread-id",
+    "message_thread_id",
+    type=int,
+    required=False,
+    help="话题ID（message_thread_id）, 不填则发送到非话题会话",
+)
 @click.pass_obj
-def send_dice(obj, chat_id, emoji, delete_after=None):
+def send_dice(obj, chat_id, emoji, delete_after=None, message_thread_id=None):
     singer = get_signer(None, obj)
     click.echo("将发送单次DICE消息")
-    singer.app_run(singer.send_dice_cli(chat_id, emoji, delete_after))
+    singer.app_run(
+        singer.send_dice_cli(
+            chat_id,
+            emoji,
+            delete_after,
+            message_thread_id=message_thread_id,
+        )
+    )
 
 
 @tg_signer.command(help="重新配置")
@@ -299,6 +327,16 @@ def send_dice(obj, chat_id, emoji, delete_after=None):
 def reconfig(obj, task_name):
     signer = UserSigner(task_name=task_name, workdir=obj["workdir"])
     return signer.reconfig()
+
+
+def parse_chat_id(chat_id: str):
+    chat_id = chat_id.strip()
+    if chat_id.startswith("@"):
+        return chat_id[1:]
+    try:
+        return int(chat_id)
+    except ValueError as e:
+        raise click.UsageError("chat_id为username时必须以@开头") from e
 
 
 @tg_signer.command(help="查询聊天（群或频道）的成员, 频道需要管理员权限")
@@ -320,15 +358,31 @@ def reconfig(obj, task_name):
 @click.pass_obj
 def list_members(obj, chat_id: str, query: str, admin, limit):
     signer = get_signer(None, obj)
-    chat_id = chat_id.strip()
-    if chat_id.startswith("@"):
-        chat_id = chat_id[1:]
-    else:
-        try:
-            chat_id = int(chat_id)
-        except ValueError:
-            raise click.UsageError("chat_id为username时必须以@开头")
+    chat_id = parse_chat_id(chat_id)
     signer.app_run(signer.list_members(chat_id, query, admin=admin, limit=limit))
+
+
+@tg_signer.command(help="列出群组话题ID（message_thread_id）")
+@click.option(
+    "--chat_id",
+    "chat_id",
+    required=True,
+    help="整数id或字符串username, username须以@开头",
+)
+@click.option(
+    "--limit",
+    "-l",
+    "limit",
+    default=20,
+    show_default=True,
+    type=int,
+    help="最多返回的话题数量",
+)
+@click.pass_obj
+def list_topics(obj, chat_id: str, limit: int):
+    signer = get_signer(None, obj)
+    chat_id = parse_chat_id(chat_id)
+    signer.app_run(signer.list_topics(chat_id, limit=limit))
 
 
 @tg_signer.command(
@@ -401,11 +455,27 @@ def import_(obj, task_name: str, file: str = None):
     show_default=True,
     help="加入随机秒数，会应用于每个定时消息",
 )
+@click.option(
+    "--message-thread-id",
+    "message_thread_id",
+    type=int,
+    required=False,
+    help="话题ID（message_thread_id）, 不填则发送到非话题会话",
+)
 @click.pass_obj
-def schedule_messages(obj, chat_id, text, crontab, next_times, random_seconds):
+def schedule_messages(
+    obj, chat_id, text, crontab, next_times, random_seconds, message_thread_id
+):
     signer = get_signer(None, obj)
     signer.app_run(
-        signer.schedule_messages(chat_id, text, crontab, next_times, random_seconds)
+        signer.schedule_messages(
+            chat_id,
+            text,
+            crontab,
+            next_times,
+            random_seconds,
+            message_thread_id=message_thread_id,
+        )
     )
 
 
