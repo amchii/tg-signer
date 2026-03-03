@@ -64,6 +64,7 @@ Commands:
   import                  Import config (default: stdin)
   list                    List existing configs
   list-members            List chat members (admin rights required for channels)
+  list-topics             List group topic IDs (message_thread_id)
   list-schedule-messages  Show configured scheduled messages
   login                   Login account (to obtain session)
   logout                  Logout and delete session file
@@ -88,6 +89,7 @@ tg-signer send-text --message-thread-id 1 -- -1003763902761 checkin  # Send to a
 tg-signer send-text -- -10006758812 water  # For negative numbers, use POSIX style with '--' before '-'
 tg-signer send-text --delete-after 1 8671234001 /test  # Send '/test' to '8671234001', delete after 1 second
 tg-signer list-members --chat_id -1001680975844 --admin  # List channel admins
+tg-signer list-topics --chat_id -1003763902761 --limit 50  # List group topics and message_thread_id
 tg-signer schedule-messages --crontab '0 0 * * *' --next-times 10 -- -1001680975844 hello  # Send "hello" to '-1001680975844' at 00:00 daily for next 10 days
 tg-signer schedule-messages --crontab '0 0 * * *' --next-times 3 --message-thread-id 1 -- -1003763902761 hello  # Schedule messages in a topic
 tg-signer monitor run  # Configure and run personal/group/channel message monitoring
@@ -109,6 +111,15 @@ tg-signer login
 ```
 
 Follow prompts to enter phone number and verification code. Recent chats will be listed - ensure your target chat is included.
+For supergroups with topics enabled, login output also prints each topic's `message_thread_id`, so you can directly use it with `--message-thread-id`.
+
+### Get Group Topic IDs
+
+```sh
+tg-signer list-topics --chat_id -1003763902761
+```
+
+This prints visible topics with `message_thread_id`, title, and status, making topic-specific configuration easier.
 
 ### Send One Message
 

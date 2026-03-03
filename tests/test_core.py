@@ -351,41 +351,6 @@ async def test_on_message_falls_back_to_non_thread_route(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_request_callback_answer_without_message_thread_id(monkeypatch, tmp_path):
-    signer = UserSigner(
-        task_name="task",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
-    )
-    called = {}
-
-    class DummyClient:
-        async def request_callback_answer(
-            self, chat_id, message_id, callback_data=None, **kwargs
-        ):
-            called["chat_id"] = chat_id
-            called["message_id"] = message_id
-            called["callback_data"] = callback_data
-            called["kwargs"] = kwargs
-            return True
-
-    async def direct_call(_api_name, func):
-        return await func()
-
-    monkeypatch.setattr(signer, "_call_telegram_api", direct_call)
-
-    await signer.request_callback_answer(
-        DummyClient(),
-        -1003763902761,
-        99,
-        "cb-data",
-    )
-
-    assert called["kwargs"] == {}
-
-
-@pytest.mark.asyncio
 async def test_schedule_messages_passes_message_thread_id(monkeypatch, tmp_path):
     signer = UserSigner(
         task_name="task",

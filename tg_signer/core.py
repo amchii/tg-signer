@@ -103,6 +103,15 @@ def readable_chat(chat: Chat):
     return f"id: {chat.id}, username: {none_or_dash(chat.username)}, title: {none_or_dash(chat.title)}, type: {type_}, name: {none_or_dash(chat.first_name)}"
 
 
+def readable_topic(topic) -> str:
+    none_or_dash = lambda x: x or "-"  # noqa: E731
+    return (
+        f"message_thread_id: {topic.id}, title: {none_or_dash(topic.title)}, "
+        f"closed: {bool(getattr(topic, 'is_closed', False))}, "
+        f"pinned: {bool(getattr(topic, 'is_pinned', False))}"
+    )
+
+
 _CLIENT_INSTANCES: dict[str, "Client"] = {}
 
 # reference counts and async locks for shared client lifecycle management
@@ -463,6 +472,18 @@ class BaseUserWorker(Generic[ConfigT]):
                             )
                             if print_chat:
                                 print_to_user(readable_chat(chat))
+                                if chat.type == ChatType.SUPERGROUP:
+                                    try:
+                                        topics = await self.get_forum_topics(
+                                            chat.id, limit=20
+                                        )
+                                        for topic in topics:
+                                            print_to_user(f"  {readable_topic(topic)}")
+                                    except errors.RPCError:
+                                        # Keep login robust: many chats don't support
+                                        # forum topics or the current account may not
+                                        # have permissions to read them.
+                                        pass
                         return latest_chats
 
                     latest_chats = await self._call_telegram_api(
@@ -600,6 +621,32 @@ class BaseUserWorker(Generic[ConfigT]):
                         is_bot=member.user.is_bot,
                     )
                 )
+
+    async def get_forum_topics(self, chat_id: Union[int, str], limit: int = 20):
+        topics = []
+
+        async def _collect_topics():
+            async for topic in self.app.get_forum_topics(chat_id, limit=limit):
+                topics.append(topic)
+            return topics
+
+        return await self._call_telegram_api("channels.GetForumTopics", _collect_topics)
+
+    async def list_topics(self, chat_id: Union[int, str], limit: int = 20):
+        if self.user is None:
+            await self.login(print_chat=False)
+        async with self.app:
+            try:
+                topics = await self.get_forum_topics(chat_id, limit=limit)
+            except errors.RPCError as e:
+                print_to_user(f"获取话题失败: {e}")
+                return []
+            if not topics:
+                print_to_user("未获取到话题，可能该聊天未开启话题或无权限。")
+                return []
+            for topic in topics:
+                print_to_user(readable_topic(topic))
+            return topics
 
     def export(self):
         with open(self.config_file, "r", encoding="utf-8") as fp:

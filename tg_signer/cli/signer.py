@@ -329,6 +329,16 @@ def reconfig(obj, task_name):
     return signer.reconfig()
 
 
+def parse_chat_id(chat_id: str):
+    chat_id = chat_id.strip()
+    if chat_id.startswith("@"):
+        return chat_id[1:]
+    try:
+        return int(chat_id)
+    except ValueError as e:
+        raise click.UsageError("chat_id为username时必须以@开头") from e
+
+
 @tg_signer.command(help="查询聊天（群或频道）的成员, 频道需要管理员权限")
 @click.option(
     "--chat_id",
@@ -348,15 +358,31 @@ def reconfig(obj, task_name):
 @click.pass_obj
 def list_members(obj, chat_id: str, query: str, admin, limit):
     signer = get_signer(None, obj)
-    chat_id = chat_id.strip()
-    if chat_id.startswith("@"):
-        chat_id = chat_id[1:]
-    else:
-        try:
-            chat_id = int(chat_id)
-        except ValueError:
-            raise click.UsageError("chat_id为username时必须以@开头")
+    chat_id = parse_chat_id(chat_id)
     signer.app_run(signer.list_members(chat_id, query, admin=admin, limit=limit))
+
+
+@tg_signer.command(help="列出群组话题ID（message_thread_id）")
+@click.option(
+    "--chat_id",
+    "chat_id",
+    required=True,
+    help="整数id或字符串username, username须以@开头",
+)
+@click.option(
+    "--limit",
+    "-l",
+    "limit",
+    default=20,
+    show_default=True,
+    type=int,
+    help="最多返回的话题数量",
+)
+@click.pass_obj
+def list_topics(obj, chat_id: str, limit: int):
+    signer = get_signer(None, obj)
+    chat_id = parse_chat_id(chat_id)
+    signer.app_run(signer.list_topics(chat_id, limit=limit))
 
 
 @tg_signer.command(

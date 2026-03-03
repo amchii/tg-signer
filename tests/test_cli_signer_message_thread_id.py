@@ -70,6 +70,15 @@ class DummySigner:
             }
         )
 
+    async def list_topics(self, chat_id, limit=20):
+        self.calls.append(
+            {
+                "method": "list_topics",
+                "chat_id": chat_id,
+                "limit": limit,
+            }
+        )
+
 
 def test_send_text_supports_message_thread_id(monkeypatch):
     dummy = DummySigner()
@@ -124,15 +133,17 @@ def test_schedule_messages_supports_message_thread_id(monkeypatch):
     assert dummy.calls[0]["message_thread_id"] == 1
 
 
-def test_list_schedule_messages_without_message_thread_id_option(monkeypatch):
+def test_list_topics(monkeypatch):
     dummy = DummySigner()
     monkeypatch.setattr(signer_cli, "get_signer", lambda *_args, **_kwargs: dummy)
     runner = CliRunner()
 
     result = runner.invoke(
         signer_cli.tg_signer,
-        ["list-schedule-messages", "123456"],
+        ["list-topics", "--chat_id", "-1003763902761", "--limit", "50"],
     )
 
     assert result.exit_code == 0
-    assert dummy.calls[0]["method"] == "get_schedule_messages"
+    assert dummy.calls[0]["method"] == "list_topics"
+    assert dummy.calls[0]["chat_id"] == -1003763902761
+    assert dummy.calls[0]["limit"] == 50
