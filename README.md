@@ -98,10 +98,12 @@ tg-signer run
 tg-signer run my_sign  # 不询问，直接运行'my_sign'任务
 tg-signer run-once my_sign  # 直接运行一次'my_sign'任务
 tg-signer send-text 8671234001 /test  # 向chat_id为'8671234001'的聊天发送'/test'文本
+tg-signer send-text --message-thread-id 1 -- -1003763902761 checkin  # 发送到群组话题(message_thread_id=1)
 tg-signer send-text -- -10006758812 浇水  # 对于负数需要使用POSIX风格，在短横线'-'前方加上'--'
 tg-signer send-text --delete-after 1 8671234001 /test  # 向chat_id为'8671234001'的聊天发送'/test'文本, 并在1秒后删除发送的消息
 tg-signer list-members --chat_id -1001680975844 --admin  # 列出频道的管理员
 tg-signer schedule-messages --crontab '0 0 * * *' --next-times 10 -- -1001680975844 你好  # 在未来10天的每天0点向'-1001680975844'发送消息
+tg-signer schedule-messages --crontab '0 0 * * *' --next-times 3 --message-thread-id 1 -- -1003763902761 你好  # 配置群组话题的定时消息
 tg-signer monitor run  # 配置个人、群组、频道消息监控与自动回复
 tg-signer multi-run -a account_a -a account_b same_task  # 使用'same_task'的配置同时运行'account_a'和'account_b'两个账号
 tg-signer webgui --auth-code averycomplexcode  # 启动一个WebGUI
@@ -152,7 +154,9 @@ tg-signer run linuxdo
 第1个签到
 一. Chat ID（登录时最近对话输出中的ID）: 7661096533
 二. Chat名称（可选）: jerry bot
-三. 开始配置<动作>，请按照实际签到顺序配置。
+三. 是否发送到话题（message_thread_id）？(y/N)：y
+四. message_thread_id: 1
+五. 开始配置<动作>，请按照实际签到顺序配置。
   1: 发送普通文本
   2: 发送Dice类型的emoji
   3: 根据文本点击键盘
@@ -180,10 +184,11 @@ tg-signer run linuxdo
 2. 输入要发送的骰子（如 🎲, 🎯）: 🎲
 3. 是否继续添加动作？(y/N)：n
 在运行前请通过环境变量正确设置`OPENAI_API_KEY`, `OPENAI_BASE_URL`。默认模型为"gpt-4o", 可通过环境变量`OPENAI_MODEL`更改。
-四. 等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: 10
+六. 等待N秒后删除签到消息（发送消息后等待进行删除, '0'表示立即删除, 不需要删除直接回车）, N: 10
 ╔════════════════════════════════════════════════╗
 ║ Chat ID: 7661096533                            ║
 ║ Name: jerry bot                                ║
+║ Message Thread ID: 1                           ║
 ║ Delete After: 10                               ║
 ╟────────────────────────────────────────────────╢
 ║ Actions Flow:                                  ║

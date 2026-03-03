@@ -227,6 +227,7 @@ ActionT: TypeAlias = Union[
 class SignChatV3(BaseJSONConfig):
     version: ClassVar = 3
     chat_id: int
+    message_thread_id: Optional[int] = None
     name: Optional[str] = None
     delete_after: Optional[int] = None
     actions: List[ActionT]
@@ -235,6 +236,7 @@ class SignChatV3(BaseJSONConfig):
     def __repr__(self) -> str:
         return (
             f"SignChatV3(chat_id={self.chat_id}, "
+            f"message_thread_id={self.message_thread_id}, "
             f"delete_after={self.delete_after}, "
             f"actions=[{len(self.actions)} actions]),"
             f"action_interval={self.action_interval}"
@@ -256,6 +258,10 @@ class SignChatV3(BaseJSONConfig):
         # 构建name部分
         name_text = f"Name: {self.name or '-'}"
         name_info = f"║ {pad_text_to_width(name_text, content_width - 2)} ║"
+
+        # 构建message_thread_id部分
+        thread_id_text = f"Message Thread ID: {self.message_thread_id or '-'}"
+        thread_id_info = f"║ {pad_text_to_width(thread_id_text, content_width - 2)} ║"
 
         # 构建删除时间部分
         delete_text = f"Delete After: {self.delete_after or '-'}"
@@ -298,6 +304,7 @@ class SignChatV3(BaseJSONConfig):
             top_border,
             title,
             name_info,
+            thread_id_info,
             delete_info,
             separator,
             actions_header,

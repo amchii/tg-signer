@@ -122,6 +122,8 @@ _API_MIN_INTERVAL_SECONDS = 0.35
 _API_FLOODWAIT_PADDING_SECONDS = 0.5
 _API_MAX_FLOODWAIT_RETRIES = 2
 
+RouteKey = tuple[int, Optional[int]]
+
 
 class Client(BaseClient):
     def __init__(self, name: str, *args, **kwargs):
@@ -501,7 +503,12 @@ class BaseUserWorker(Generic[ConfigT]):
         return result
 
     async def send_message(
-        self, chat_id: Union[int, str], text: str, delete_after: int = None, **kwargs
+        self,
+        chat_id: Union[int, str],
+        text: str,
+        delete_after: int = None,
+        message_thread_id: Optional[int] = None,
+        **kwargs,
     ):
         """
         发送文本消息
@@ -511,9 +518,12 @@ class BaseUserWorker(Generic[ConfigT]):
         :param kwargs:
         :return:
         """
+        send_kwargs = dict(kwargs)
+        if message_thread_id is not None:
+            send_kwargs["message_thread_id"] = message_thread_id
         message = await self._call_telegram_api(
             "messages.SendMessage",
-            lambda: self.app.send_message(chat_id, text, **kwargs),
+            lambda: self.app.send_message(chat_id, text, **send_kwargs),
         )
         if delete_after is not None:
             self.log(
@@ -530,6 +540,7 @@ class BaseUserWorker(Generic[ConfigT]):
         chat_id: Union[int, str],
         emoji: str = "🎲",
         delete_after: int = None,
+        message_thread_id: Optional[int] = None,
         **kwargs,
     ):
         """
@@ -546,9 +557,12 @@ class BaseUserWorker(Generic[ConfigT]):
                 f"Warning, emoji should be one of {', '.join(DICE_EMOJIS)}",
                 level="WARNING",
             )
+        send_kwargs = dict(kwargs)
+        if message_thread_id is not None:
+            send_kwargs["message_thread_id"] = message_thread_id
         message = await self._call_telegram_api(
             "messages.SendMedia",
-            lambda: self.app.send_dice(chat_id, emoji, **kwargs),
+            lambda: self.app.send_dice(chat_id, emoji, **send_kwargs),
         )
         if message and delete_after is not None:
             self.log(
@@ -643,14 +657,14 @@ class UserSignerWorkerContext(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     waiter: Waiter
-    sign_chats: defaultdict[int, list[SignChatV3]]  # 签到配置列表
+    sign_chats: defaultdict[RouteKey, list[SignChatV3]]  # 签到配置列表
     chat_messages: defaultdict[
-        int,
+        RouteKey,
         Annotated[
             dict[int, Optional[Message]],
             Field(default_factory=dict),
         ],
-    ]  # 收到的消息，key为chat id
+    ]  # 收到的消息，key为(chat id, message_thread_id)
     waiting_message: Optional[Message]  # 正在处理的消息
 
 
@@ -667,6 +681,12 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
             chat_messages=defaultdict(dict),
             waiting_message=None,
         )
+
+    @staticmethod
+    def get_route_key(
+        chat_id: int, message_thread_id: Optional[int] = None
+    ) -> RouteKey:
+        return chat_id, message_thread_id
 
     @property
     def sign_record_file(self):
@@ -729,6 +749,13 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         input_ = UserInput(numbering_lang="chinese_simple")
         chat_id = int(input_("Chat ID（登录时最近对话输出中的ID）: "))
         name = input_("Chat名称（可选）: ")
+        use_message_thread = (
+            input_("是否发送到话题（message_thread_id）？(y/N)：").strip().lower()
+            == "y"
+        )
+        message_thread_id = None
+        if use_message_thread:
+            message_thread_id = int(input_("message_thread_id: "))
         actions = self._ask_actions(input_)
         delete_after = (
             input_(
@@ -740,6 +767,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
             delete_after = int(delete_after)
         cfgs = {
             "chat_id": chat_id,
+            "message_thread_id": message_thread_id,
             "name": name,
             "delete_after": delete_after,
             "actions": actions,
@@ -862,7 +890,8 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
 
         async def sign_once():
             for chat in config.chats:
-                self.context.sign_chats[chat.chat_id].append(chat)
+                route_key = self.get_route_key(chat.chat_id, chat.message_thread_id)
+                self.context.sign_chats[route_key].append(chat)
                 try:
                     await self.sign_a_chat(chat)
                 except errors.RPCError as _e:
@@ -870,7 +899,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                     logger.warning(_e, exc_info=True)
                     continue
 
-                self.context.chat_messages[chat.chat_id].clear()
+                self.context.chat_messages[route_key].clear()
                 await asyncio.sleep(config.sign_interval)
             sign_record[str(now.date())] = now.isoformat()
             with open(self.sign_record_file, "w", encoding="utf-8") as fp:
@@ -925,31 +954,54 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         return await self.run(num_of_dialogs, only_once=True, force_rerun=True)
 
     async def send_text(
-        self, chat_id: int, text: str, delete_after: int = None, **kwargs
+        self,
+        chat_id: int,
+        text: str,
+        delete_after: int = None,
+        message_thread_id: Optional[int] = None,
+        **kwargs,
     ):
         if self.user is None:
             await self.login(print_chat=False)
         async with self.app:
-            await self.send_message(chat_id, text, delete_after, **kwargs)
+            await self.send_message(
+                chat_id,
+                text,
+                delete_after,
+                message_thread_id=message_thread_id,
+                **kwargs,
+            )
 
     async def send_dice_cli(
         self,
         chat_id: Union[str, int],
         emoji: str = "🎲",
         delete_after: int = None,
+        message_thread_id: Optional[int] = None,
         **kwargs,
     ):
         if self.user is None:
             await self.login(print_chat=False)
         async with self.app:
-            await self.send_dice(chat_id, emoji, delete_after, **kwargs)
+            await self.send_dice(
+                chat_id,
+                emoji,
+                delete_after,
+                message_thread_id=message_thread_id,
+                **kwargs,
+            )
 
     async def _on_message(self, client: Client, message: Message):
-        chats = self.context.sign_chats.get(message.chat.id)
+        message_thread_id = getattr(message, "message_thread_id", None)
+        route_key = self.get_route_key(message.chat.id, message_thread_id)
+        chats = self.context.sign_chats.get(route_key)
+        if not chats and message_thread_id is not None:
+            route_key = self.get_route_key(message.chat.id, None)
+            chats = self.context.sign_chats.get(route_key)
         if not chats:
             self.log("忽略意料之外的聊天", level="WARNING")
             return
-        self.context.chat_messages[message.chat.id][message.id] = message
+        self.context.chat_messages[route_key][message.id] = message
 
     async def on_message(self, client: Client, message: Message):
         self.log(
@@ -985,6 +1037,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                             message.chat.id,
                             message.id,
                             btn.callback_data,
+                            message_thread_id=getattr(message, "message_thread_id", None),
                         )
                         return True
         return False
@@ -997,7 +1050,11 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
             self.log(f"问题: \n{message.text}")
             answer = await self.get_ai_tools().calculate_problem(message.text)
             self.log(f"回答为: {answer}")
-            await self.send_message(message.chat.id, answer)
+            await self.send_message(
+                message.chat.id,
+                answer,
+                message_thread_id=getattr(message, "message_thread_id", None),
+            )
             return True
         return False
 
@@ -1029,21 +1086,33 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                     message.chat.id,
                     message.id,
                     target_btn.callback_data,
+                    message_thread_id=getattr(message, "message_thread_id", None),
                 )
                 return True
         return False
 
     async def wait_for(self, chat: SignChatV3, action: ActionT, timeout=10):
+        route_key = self.get_route_key(chat.chat_id, chat.message_thread_id)
         if isinstance(action, SendTextAction):
-            return await self.send_message(chat.chat_id, action.text, chat.delete_after)
+            return await self.send_message(
+                chat.chat_id,
+                action.text,
+                chat.delete_after,
+                message_thread_id=chat.message_thread_id,
+            )
         elif isinstance(action, SendDiceAction):
-            return await self.send_dice(chat.chat_id, action.dice, chat.delete_after)
-        self.context.waiter.add(chat.chat_id)
+            return await self.send_dice(
+                chat.chat_id,
+                action.dice,
+                chat.delete_after,
+                message_thread_id=chat.message_thread_id,
+            )
+        self.context.waiter.add(route_key)
         start = time.perf_counter()
         last_message = None
         while time.perf_counter() - start < timeout:
             await asyncio.sleep(0.3)
-            messages_dict = self.context.chat_messages.get(chat.chat_id)
+            messages_dict = self.context.chat_messages.get(route_key)
             if not messages_dict:
                 continue
             messages = list(messages_dict.values())
@@ -1061,9 +1130,9 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                 elif isinstance(action, ChooseOptionByImageAction):
                     ok = await self._choose_option_by_image(action, message)
                 if ok:
-                    self.context.waiter.sub(message.chat.id)
+                    self.context.waiter.sub(route_key)
                     # 将消息ID对应value置为None，保证收到消息的编辑时消息所处的顺序
-                    self.context.chat_messages[chat.chat_id][message.id] = None
+                    self.context.chat_messages[route_key][message.id] = None
                     return None
                 self.log(f"忽略消息: {readable_message(message)}")
         self.log(f"等待超时: \nchat: \n{chat} \naction: {action}", level="WARNING")
@@ -1075,13 +1144,20 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         chat_id: Union[int, str],
         message_id: int,
         callback_data: Union[str, bytes],
+        message_thread_id: Optional[int] = None,
         **kwargs,
     ):
         try:
+            request_kwargs = dict(kwargs)
+            if message_thread_id is not None:
+                request_kwargs["message_thread_id"] = message_thread_id
             await self._call_telegram_api(
                 "messages.GetBotCallbackAnswer",
                 lambda: client.request_callback_answer(
-                    chat_id, message_id, callback_data=callback_data, **kwargs
+                    chat_id,
+                    message_id,
+                    callback_data=callback_data,
+                    **request_kwargs,
                 ),
             )
             self.log("点击完成")
@@ -1095,6 +1171,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         crontab: str = None,
         next_times: int = 1,
         random_seconds: int = 0,
+        message_thread_id: Optional[int] = None,
     ):
         now = get_now()
         it = croniter(crontab, start_time=now)
@@ -1113,6 +1190,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                         chat_id,
                         text,
                         schedule_date=schedule_date,
+                        message_thread_id=message_thread_id,
                     ),
                 )
                 await asyncio.sleep(0.1)
@@ -1120,14 +1198,34 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         self.log(f"已配置定时发送消息，次数{next_times}")
         return results
 
-    async def get_schedule_messages(self, chat_id):
+    async def get_schedule_messages(
+        self, chat_id: Union[int, str], message_thread_id: Optional[int] = None
+    ):
         if self.user is None:
             await self.login(print_chat=False)
         async with self.app:
-            messages = await self._call_telegram_api(
-                "messages.GetScheduledHistory",
-                lambda: self.app.get_scheduled_messages(chat_id),
-            )
+            if message_thread_id is None:
+                messages = await self._call_telegram_api(
+                    "messages.GetScheduledHistory",
+                    lambda: self.app.get_scheduled_messages(chat_id),
+                )
+            else:
+                try:
+                    messages = await self._call_telegram_api(
+                        "messages.GetScheduledHistory",
+                        lambda: self.app.get_scheduled_messages(
+                            chat_id, message_thread_id=message_thread_id
+                        ),
+                    )
+                except TypeError:
+                    self.log(
+                        "当前库版本不支持`get_scheduled_messages`传入message_thread_id，已回退到chat级别查询",
+                        level="WARNING",
+                    )
+                    messages = await self._call_telegram_api(
+                        "messages.GetScheduledHistory",
+                        lambda: self.app.get_scheduled_messages(chat_id),
+                    )
             for message in messages:
                 print_to_user(f"{message.date}: {message.text}")
 

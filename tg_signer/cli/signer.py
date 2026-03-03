@@ -264,11 +264,25 @@ def run_once(obj, task_name, num_of_dialogs):
     required=False,
     help="秒, 发送消息后进行删除, 默认不删除, '0'表示立即删除.",
 )
+@click.option(
+    "--message-thread-id",
+    "message_thread_id",
+    type=int,
+    required=False,
+    help="话题ID（message_thread_id）, 不填则发送到非话题会话",
+)
 @click.pass_obj
-def send_text(obj, chat_id, text, delete_after=None):
+def send_text(obj, chat_id, text, delete_after=None, message_thread_id=None):
     singer = get_signer(None, obj)
     click.echo("将发送单次消息")
-    singer.app_run(singer.send_text(chat_id, text, delete_after))
+    singer.app_run(
+        singer.send_text(
+            chat_id,
+            text,
+            delete_after,
+            message_thread_id=message_thread_id,
+        )
+    )
 
 
 @tg_signer.command(
@@ -286,11 +300,25 @@ def send_text(obj, chat_id, text, delete_after=None):
     required=False,
     help="秒, 发送消息后进行删除, 默认不删除, '0'表示立即删除.",
 )
+@click.option(
+    "--message-thread-id",
+    "message_thread_id",
+    type=int,
+    required=False,
+    help="话题ID（message_thread_id）, 不填则发送到非话题会话",
+)
 @click.pass_obj
-def send_dice(obj, chat_id, emoji, delete_after=None):
+def send_dice(obj, chat_id, emoji, delete_after=None, message_thread_id=None):
     singer = get_signer(None, obj)
     click.echo("将发送单次DICE消息")
-    singer.app_run(singer.send_dice_cli(chat_id, emoji, delete_after))
+    singer.app_run(
+        singer.send_dice_cli(
+            chat_id,
+            emoji,
+            delete_after,
+            message_thread_id=message_thread_id,
+        )
+    )
 
 
 @tg_signer.command(help="重新配置")
@@ -401,23 +429,48 @@ def import_(obj, task_name: str, file: str = None):
     show_default=True,
     help="加入随机秒数，会应用于每个定时消息",
 )
+@click.option(
+    "--message-thread-id",
+    "message_thread_id",
+    type=int,
+    required=False,
+    help="话题ID（message_thread_id）, 不填则发送到非话题会话",
+)
 @click.pass_obj
-def schedule_messages(obj, chat_id, text, crontab, next_times, random_seconds):
+def schedule_messages(
+    obj, chat_id, text, crontab, next_times, random_seconds, message_thread_id
+):
     signer = get_signer(None, obj)
     signer.app_run(
-        signer.schedule_messages(chat_id, text, crontab, next_times, random_seconds)
+        signer.schedule_messages(
+            chat_id,
+            text,
+            crontab,
+            next_times,
+            random_seconds,
+            message_thread_id=message_thread_id,
+        )
     )
 
 
 @tg_signer.command(help="显示已配置的定时消息")
 @click.argument("chat_id", type=int)
+@click.option(
+    "--message-thread-id",
+    "message_thread_id",
+    type=int,
+    required=False,
+    help="话题ID（message_thread_id）, 不填则查询非话题会话",
+)
 @click.pass_obj
-def list_schedule_messages(obj, chat_id):
+def list_schedule_messages(obj, chat_id, message_thread_id):
     logging.root.setLevel(
         level=logging.WARNING,
     )
     signer = get_signer(None, obj)
-    signer.app_run(signer.get_schedule_messages(chat_id))
+    signer.app_run(
+        signer.get_schedule_messages(chat_id, message_thread_id=message_thread_id)
+    )
 
 
 @tg_signer.command(name="multi-run", help="使用一套配置同时运行多个账号")

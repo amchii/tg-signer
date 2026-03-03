@@ -84,10 +84,12 @@ tg-signer run
 tg-signer run my_sign  # Run 'my_sign' task without confirmation
 tg-signer run-once my_sign  # Run 'my_sign' task once
 tg-signer send-text 8671234001 /test  # Send '/test' to chat_id '8671234001'
+tg-signer send-text --message-thread-id 1 -- -1003763902761 checkin  # Send to a group topic (message_thread_id=1)
 tg-signer send-text -- -10006758812 water  # For negative numbers, use POSIX style with '--' before '-'
 tg-signer send-text --delete-after 1 8671234001 /test  # Send '/test' to '8671234001', delete after 1 second
 tg-signer list-members --chat_id -1001680975844 --admin  # List channel admins
 tg-signer schedule-messages --crontab '0 0 * * *' --next-times 10 -- -1001680975844 hello  # Send "hello" to '-1001680975844' at 00:00 daily for next 10 days
+tg-signer schedule-messages --crontab '0 0 * * *' --next-times 3 --message-thread-id 1 -- -1003763902761 hello  # Schedule messages in a topic
 tg-signer monitor run  # Configure and run personal/group/channel message monitoring
 tg-signer multi-run -a account_a -a account_b same_task  # Run 'account_a' and 'account_b' with 'same_task' config
 ```
@@ -135,7 +137,9 @@ Configuring task <linuxdo>
 Check-in 1
 1. Chat ID (from recent chats during login): 7661096533
 2. Chat name (optional): jerry bot
-3. Configure <Actions> in actual check-in order:
+3. Send to topic (message_thread_id)? (y/N): y
+4. message_thread_id: 1
+5. Configure <Actions> in actual check-in order:
   1: Send plain text
   2: Send Dice emoji
   3: Click keyboard by text
@@ -163,10 +167,11 @@ Action 5:
 12. Dice emoji to send (e.g. 🎲, 🎯): 🎲
 13. Continue adding actions? (y/N): n
 Ensure `OPENAI_API_KEY` and `OPENAI_BASE_URL` are set. Default model: "gpt-4o" (change via `OPENAI_MODEL`).
-14. Delete check-in message after N seconds (0=immediate, empty=no delete), N: 10
+15. Delete check-in message after N seconds (0=immediate, empty=no delete), N: 10
 ╔════════════════════════════════════════════════╗
 ║ Chat ID: 7661096533                            ║
 ║ Name: jerry bot                                ║
+║ Message Thread ID: 1                           ║
 ║ Delete After: 10                               ║
 ╟────────────────────────────────────────────────╢
 ║ Actions Flow:                                  ║

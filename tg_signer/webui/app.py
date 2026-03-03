@@ -29,6 +29,7 @@ SIGNER_TEMPLATE: Dict[str, object] = {
     "chats": [
         {
             "chat_id": 123456789,
+            "message_thread_id": None,
             "name": "示例任务",
             "delete_after": None,
             "actions": [{"action": 1, "text": "签到"}],
