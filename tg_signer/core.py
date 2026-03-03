@@ -1037,7 +1037,9 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                             message.chat.id,
                             message.id,
                             btn.callback_data,
-                            message_thread_id=getattr(message, "message_thread_id", None),
+                            message_thread_id=getattr(
+                                message, "message_thread_id", None
+                            ),
                         )
                         return True
         return False

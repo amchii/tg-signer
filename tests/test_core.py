@@ -405,9 +405,7 @@ async def test_schedule_messages_passes_message_thread_id(monkeypatch, tmp_path)
             return False
 
         async def send_message(self, chat_id, text, **kwargs):
-            calls.append(
-                {"chat_id": chat_id, "text": text, "kwargs": dict(kwargs)}
-            )
+            calls.append({"chat_id": chat_id, "text": text, "kwargs": dict(kwargs)})
             return True
 
     async def direct_call(_api_name, func):
