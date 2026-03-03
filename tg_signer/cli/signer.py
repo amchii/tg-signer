@@ -455,22 +455,13 @@ def schedule_messages(
 
 @tg_signer.command(help="显示已配置的定时消息")
 @click.argument("chat_id", type=int)
-@click.option(
-    "--message-thread-id",
-    "message_thread_id",
-    type=int,
-    required=False,
-    help="话题ID（message_thread_id）, 不填则查询非话题会话",
-)
 @click.pass_obj
-def list_schedule_messages(obj, chat_id, message_thread_id):
+def list_schedule_messages(obj, chat_id):
     logging.root.setLevel(
         level=logging.WARNING,
     )
     signer = get_signer(None, obj)
-    signer.app_run(
-        signer.get_schedule_messages(chat_id, message_thread_id=message_thread_id)
-    )
+    signer.app_run(signer.get_schedule_messages(chat_id))
 
 
 @tg_signer.command(name="multi-run", help="使用一套配置同时运行多个账号")

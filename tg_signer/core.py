@@ -1037,9 +1037,6 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                             message.chat.id,
                             message.id,
                             btn.callback_data,
-                            message_thread_id=getattr(
-                                message, "message_thread_id", None
-                            ),
                         )
                         return True
         return False
@@ -1088,7 +1085,6 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                     message.chat.id,
                     message.id,
                     target_btn.callback_data,
-                    message_thread_id=getattr(message, "message_thread_id", None),
                 )
                 return True
         return False
@@ -1146,20 +1142,16 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         chat_id: Union[int, str],
         message_id: int,
         callback_data: Union[str, bytes],
-        message_thread_id: Optional[int] = None,
         **kwargs,
     ):
         try:
-            request_kwargs = dict(kwargs)
-            if message_thread_id is not None:
-                request_kwargs["message_thread_id"] = message_thread_id
             await self._call_telegram_api(
                 "messages.GetBotCallbackAnswer",
                 lambda: client.request_callback_answer(
                     chat_id,
                     message_id,
                     callback_data=callback_data,
-                    **request_kwargs,
+                    **kwargs,
                 ),
             )
             self.log("点击完成")
@@ -1200,34 +1192,14 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         self.log(f"已配置定时发送消息，次数{next_times}")
         return results
 
-    async def get_schedule_messages(
-        self, chat_id: Union[int, str], message_thread_id: Optional[int] = None
-    ):
+    async def get_schedule_messages(self, chat_id: Union[int, str]):
         if self.user is None:
             await self.login(print_chat=False)
         async with self.app:
-            if message_thread_id is None:
-                messages = await self._call_telegram_api(
-                    "messages.GetScheduledHistory",
-                    lambda: self.app.get_scheduled_messages(chat_id),
-                )
-            else:
-                try:
-                    messages = await self._call_telegram_api(
-                        "messages.GetScheduledHistory",
-                        lambda: self.app.get_scheduled_messages(
-                            chat_id, message_thread_id=message_thread_id
-                        ),
-                    )
-                except TypeError:
-                    self.log(
-                        "当前库版本不支持`get_scheduled_messages`传入message_thread_id，已回退到chat级别查询",
-                        level="WARNING",
-                    )
-                    messages = await self._call_telegram_api(
-                        "messages.GetScheduledHistory",
-                        lambda: self.app.get_scheduled_messages(chat_id),
-                    )
+            messages = await self._call_telegram_api(
+                "messages.GetScheduledHistory",
+                lambda: self.app.get_scheduled_messages(chat_id),
+            )
             for message in messages:
                 print_to_user(f"{message.date}: {message.text}")
 

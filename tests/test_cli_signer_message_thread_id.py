@@ -62,12 +62,11 @@ class DummySigner:
             }
         )
 
-    async def get_schedule_messages(self, chat_id, message_thread_id=None):
+    async def get_schedule_messages(self, chat_id):
         self.calls.append(
             {
                 "method": "get_schedule_messages",
                 "chat_id": chat_id,
-                "message_thread_id": message_thread_id,
             }
         )
 
@@ -125,16 +124,15 @@ def test_schedule_messages_supports_message_thread_id(monkeypatch):
     assert dummy.calls[0]["message_thread_id"] == 1
 
 
-def test_list_schedule_messages_supports_message_thread_id(monkeypatch):
+def test_list_schedule_messages_without_message_thread_id_option(monkeypatch):
     dummy = DummySigner()
     monkeypatch.setattr(signer_cli, "get_signer", lambda *_args, **_kwargs: dummy)
     runner = CliRunner()
 
     result = runner.invoke(
         signer_cli.tg_signer,
-        ["list-schedule-messages", "--message-thread-id", "1", "123456"],
+        ["list-schedule-messages", "123456"],
     )
 
     assert result.exit_code == 0
     assert dummy.calls[0]["method"] == "get_schedule_messages"
-    assert dummy.calls[0]["message_thread_id"] == 1

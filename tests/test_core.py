@@ -351,7 +351,7 @@ async def test_on_message_falls_back_to_non_thread_route(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_request_callback_answer_passes_message_thread_id(monkeypatch, tmp_path):
+async def test_request_callback_answer_without_message_thread_id(monkeypatch, tmp_path):
     signer = UserSigner(
         task_name="task",
         account="acct",
@@ -380,10 +380,9 @@ async def test_request_callback_answer_passes_message_thread_id(monkeypatch, tmp
         -1003763902761,
         99,
         "cb-data",
-        message_thread_id=1,
     )
 
-    assert called["kwargs"]["message_thread_id"] == 1
+    assert called["kwargs"] == {}
 
 
 @pytest.mark.asyncio
@@ -427,7 +426,7 @@ async def test_schedule_messages_passes_message_thread_id(monkeypatch, tmp_path)
 
 
 @pytest.mark.asyncio
-async def test_get_schedule_messages_passes_message_thread_id(monkeypatch, tmp_path):
+async def test_get_schedule_messages_calls_chat_level_api(monkeypatch, tmp_path):
     signer = UserSigner(
         task_name="task",
         account="acct",
@@ -454,51 +453,6 @@ async def test_get_schedule_messages_passes_message_thread_id(monkeypatch, tmp_p
     signer.app = DummyApp()
     monkeypatch.setattr(signer, "_call_telegram_api", direct_call)
 
-    await signer.get_schedule_messages(
-        -1003763902761,
-        message_thread_id=1,
-    )
+    await signer.get_schedule_messages(-1003763902761)
 
-    assert calls[0]["kwargs"]["message_thread_id"] == 1
-
-
-@pytest.mark.asyncio
-async def test_get_schedule_messages_fallback_when_no_thread_support(
-    monkeypatch, tmp_path
-):
-    signer = UserSigner(
-        task_name="task",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
-    )
-    signer.user = SimpleNamespace(id=1)
-    calls = []
-
-    class DummyApp:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        async def get_scheduled_messages(self, chat_id, **kwargs):
-            calls.append({"chat_id": chat_id, "kwargs": dict(kwargs)})
-            if "message_thread_id" in kwargs:
-                raise TypeError("unexpected keyword argument 'message_thread_id'")
-            return []
-
-    async def direct_call(_api_name, func):
-        return await func()
-
-    signer.app = DummyApp()
-    monkeypatch.setattr(signer, "_call_telegram_api", direct_call)
-
-    await signer.get_schedule_messages(
-        -1003763902761,
-        message_thread_id=1,
-    )
-
-    assert len(calls) == 2
-    assert calls[0]["kwargs"]["message_thread_id"] == 1
-    assert calls[1]["kwargs"] == {}
+    assert calls[0]["kwargs"] == {}
