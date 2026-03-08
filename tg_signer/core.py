@@ -58,6 +58,7 @@ from tg_signer.config import (
     UDPForward,
 )
 
+from ._kurigram import SafeGetForumTopics
 from .ai_tools import AITools, OpenAIConfigManager
 from .notification.server_chan import sc_send
 from .utils import UserInput, print_to_user
@@ -140,7 +141,7 @@ _API_MAX_FLOODWAIT_RETRIES = 2
 RouteKey = tuple[int, Optional[int]]
 
 
-class Client(BaseClient):
+class Client(SafeGetForumTopics, BaseClient):
     def __init__(self, name: str, *args, **kwargs):
         key = kwargs.pop("key", None)
         super().__init__(name, *args, **kwargs)
@@ -197,9 +198,7 @@ class Client(BaseClient):
                 logger.info("The session_string has been loaded.")
         return self.session_string
 
-    async def log_out(
-        self,
-    ):
+    async def log_out(self):
         await super().log_out()
         if self.session_string_file.is_file():
             os.remove(self.session_string_file)

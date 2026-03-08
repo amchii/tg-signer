@@ -1,5 +1,6 @@
 import asyncio
 import pathlib
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -472,6 +473,64 @@ async def test_login_loads_forum_topics_after_dialog_fetch(monkeypatch, tmp_path
     await signer.login(num_of_dialogs=20, print_chat=True)
 
     assert any("message_thread_id: 1" in str(message) for message in outputs)
+
+
+@pytest.mark.asyncio
+async def test_client_get_forum_topics_handles_missing_top_message(
+    monkeypatch, tmp_path
+):
+    import tg_signer._kurigram.methods as kurigram_methods
+    import tg_signer.core as core
+
+    signer = UserSigner(
+        task_name="task",
+        account="acct",
+        session_dir=tmp_path,
+        workdir=tmp_path / ".signer",
+    )
+    invoke_calls = []
+
+    async def direct_call(_api_name, func):
+        return await func()
+
+    async def fake_resolve_peer(chat_id):
+        return chat_id
+
+    async def fake_invoke(query):
+        invoke_calls.append(query)
+        return SimpleNamespace(
+            users=[],
+            chats=[],
+            messages=[SimpleNamespace(id=10)],
+            topics=["topic-1", "topic-1-duplicate", "topic-2"],
+        )
+
+    async def fake_parse_message(_client, message, _users, _chats):
+        return SimpleNamespace(
+            id=message.id,
+            date=datetime(2026, 3, 8, tzinfo=timezone.utc),
+        )
+
+    def fake_parse_topic(_client, topic, messages, _users, _chats):
+        if topic == "topic-1":
+            return SimpleNamespace(id=1, title="A", top_message=messages[10])
+        if topic == "topic-1-duplicate":
+            return SimpleNamespace(id=1, title="A duplicate", top_message=messages[10])
+        if topic == "topic-2":
+            return SimpleNamespace(id=2, title="B", top_message=None)
+        return None
+
+    monkeypatch.setattr(signer, "_call_telegram_api", direct_call)
+    monkeypatch.setattr(signer.app, "resolve_peer", fake_resolve_peer)
+    monkeypatch.setattr(signer.app, "invoke", fake_invoke)
+    monkeypatch.setattr(kurigram_methods.types.Message, "_parse", fake_parse_message)
+    monkeypatch.setattr(kurigram_methods.types.ForumTopic, "_parse", fake_parse_topic)
+
+    topics = await signer.get_forum_topics(-100123, limit=20)
+
+    assert isinstance(signer.app, core.Client)
+    assert [topic.id for topic in topics] == [1, 2]
+    assert len(invoke_calls) == 1
 
 
 @pytest.mark.asyncio
