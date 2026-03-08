@@ -8,8 +8,11 @@ import pytest
 from tg_signer.config import SendTextAction, SignChatV3
 from tg_signer.core import (
     BaseUserWorker,
+    ChatType,
     UserSigner,
+    chat_has_forum_topics,
     get_client,
+    readable_chat,
 )
 
 
@@ -51,6 +54,67 @@ def test_get_client_caching(tmp_path):
 
     key = str(pathlib.Path(tmp_path).joinpath(name).resolve())
     assert key in core._CLIENT_INSTANCES
+
+
+@pytest.mark.parametrize(
+    ("chat_type", "expected"),
+    [
+        pytest.param(ChatType.FORUM, "论坛群组", id="forum"),
+        pytest.param(ChatType.DIRECT, "频道私信", id="direct"),
+    ],
+)
+def test_readable_chat_supports_new_chat_types(chat_type, expected):
+    chat = SimpleNamespace(
+        id=-2001,
+        title="test-chat",
+        type=chat_type,
+        username=None,
+        first_name=None,
+    )
+
+    assert f"type: {expected}" in readable_chat(chat)
+
+
+@pytest.mark.parametrize(
+    ("chat", "expected"),
+    [
+        pytest.param(
+            SimpleNamespace(type="private", is_forum=False),
+            False,
+            id="private",
+        ),
+        pytest.param(
+            SimpleNamespace(type=None, is_forum=False),
+            False,
+            id="unknown",
+        ),
+    ],
+)
+def test_chat_has_forum_topics_returns_false_for_non_forum_chat(chat, expected):
+    assert chat_has_forum_topics(chat) is expected
+
+
+@pytest.mark.parametrize(
+    "chat",
+    [
+        pytest.param(
+            SimpleNamespace(type=ChatType.SUPERGROUP, is_forum=True),
+            id="forum-supergroup",
+        ),
+        pytest.param(
+            SimpleNamespace(type=ChatType.FORUM, is_forum=False),
+            id="forum",
+        ),
+    ],
+)
+def test_chat_has_forum_topics_returns_true_for_forum_chat(chat):
+    assert chat_has_forum_topics(chat) is True
+
+
+def test_chat_has_forum_topics_returns_false_for_direct_chat():
+    chat = SimpleNamespace(type=ChatType.DIRECT, is_forum=False)
+
+    assert chat_has_forum_topics(chat) is False
 
 
 @pytest.mark.asyncio
@@ -257,17 +321,24 @@ async def test_login_skips_topics_for_non_forum_supergroup(monkeypatch, tmp_path
 
 
 @pytest.mark.asyncio
-async def test_login_prints_topics_for_forum_supergroup(monkeypatch, tmp_path):
-    import tg_signer.core as core
-
+@pytest.mark.parametrize(
+    ("chat_type", "is_forum"),
+    [
+        pytest.param(ChatType.SUPERGROUP, True, id="legacy-forum-supergroup"),
+        pytest.param(ChatType.FORUM, False, id="forum"),
+    ],
+)
+async def test_login_prints_topics_for_forum_chat(
+    monkeypatch, tmp_path, chat_type, is_forum
+):
     chat = SimpleNamespace(
         id=-1002,
-        title="forum-supergroup",
-        type=core.ChatType.SUPERGROUP,
+        title=f"{chat_type.name.lower()}-chat",
+        type=chat_type,
         username=None,
         first_name=None,
         last_name=None,
-        is_forum=True,
+        is_forum=is_forum,
     )
     outputs = _setup_login_test(monkeypatch, [chat])
 
@@ -292,6 +363,33 @@ async def test_login_prints_topics_for_forum_supergroup(monkeypatch, tmp_path):
 
     signer.get_forum_topics.assert_awaited_once_with(chat.id, limit=20)
     assert any("message_thread_id: 1" in str(message) for message in outputs)
+
+
+@pytest.mark.asyncio
+async def test_login_skips_topics_for_direct_chat(monkeypatch, tmp_path):
+    chat = SimpleNamespace(
+        id=-1004,
+        title="direct-chat",
+        type=ChatType.DIRECT,
+        username=None,
+        first_name=None,
+        last_name=None,
+        is_forum=False,
+    )
+    outputs = _setup_login_test(monkeypatch, [chat])
+
+    signer = UserSigner(
+        task_name="task",
+        account="acct",
+        session_dir=tmp_path,
+        workdir=tmp_path / ".signer",
+    )
+    signer.get_forum_topics = AsyncMock(return_value=[])
+
+    await signer.login(num_of_dialogs=20, print_chat=True)
+
+    signer.get_forum_topics.assert_not_awaited()
+    assert any("type: 频道私信" in str(message) for message in outputs)
 
 
 @pytest.mark.asyncio
