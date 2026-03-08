@@ -189,6 +189,146 @@ async def test_login_bootstrap_is_shared_between_concurrent_workers(
     assert signer1.user.id == signer2.user.id == 123456
 
 
+def _setup_login_test(monkeypatch, dialogs):
+    import tg_signer.core as core
+
+    _clear_client_state()
+
+    async def fake_start(self):
+        await asyncio.sleep(0)
+
+    async def fake_stop(self):
+        await asyncio.sleep(0)
+
+    async def fake_get_me(self):
+        await asyncio.sleep(0)
+        return SimpleNamespace(id=123456)
+
+    async def fake_get_dialogs(self, limit):
+        del limit
+        for chat in dialogs:
+            yield SimpleNamespace(chat=chat)
+
+    async def fake_save_session_string(self):
+        await asyncio.sleep(0)
+
+    outputs = []
+
+    def fake_print_to_user(message=""):
+        outputs.append(message)
+
+    monkeypatch.setattr(core.Client, "start", fake_start)
+    monkeypatch.setattr(core.Client, "stop", fake_stop)
+    monkeypatch.setattr(core.Client, "get_me", fake_get_me)
+    monkeypatch.setattr(core.Client, "get_dialogs", fake_get_dialogs)
+    monkeypatch.setattr(core.Client, "save_session_string", fake_save_session_string)
+    monkeypatch.setattr(core, "print_to_user", fake_print_to_user)
+
+    return outputs
+
+
+@pytest.mark.asyncio
+async def test_login_skips_topics_for_non_forum_supergroup(monkeypatch, tmp_path):
+    import tg_signer.core as core
+
+    chat = SimpleNamespace(
+        id=-1001,
+        title="plain-supergroup",
+        type=core.ChatType.SUPERGROUP,
+        username=None,
+        first_name=None,
+        last_name=None,
+        is_forum=False,
+    )
+    outputs = _setup_login_test(monkeypatch, [chat])
+
+    signer = UserSigner(
+        task_name="task",
+        account="acct",
+        session_dir=tmp_path,
+        workdir=tmp_path / ".signer",
+    )
+    signer.get_forum_topics = AsyncMock(return_value=[])
+
+    await signer.login(num_of_dialogs=20, print_chat=True)
+
+    signer.get_forum_topics.assert_not_awaited()
+    assert any("plain-supergroup" in str(message) for message in outputs)
+
+
+@pytest.mark.asyncio
+async def test_login_prints_topics_for_forum_supergroup(monkeypatch, tmp_path):
+    import tg_signer.core as core
+
+    chat = SimpleNamespace(
+        id=-1002,
+        title="forum-supergroup",
+        type=core.ChatType.SUPERGROUP,
+        username=None,
+        first_name=None,
+        last_name=None,
+        is_forum=True,
+    )
+    outputs = _setup_login_test(monkeypatch, [chat])
+
+    signer = UserSigner(
+        task_name="task",
+        account="acct",
+        session_dir=tmp_path,
+        workdir=tmp_path / ".signer",
+    )
+    signer.get_forum_topics = AsyncMock(
+        return_value=[
+            SimpleNamespace(
+                id=1,
+                title="General",
+                is_closed=False,
+                is_pinned=False,
+            )
+        ]
+    )
+
+    await signer.login(num_of_dialogs=20, print_chat=True)
+
+    signer.get_forum_topics.assert_awaited_once_with(chat.id, limit=20)
+    assert any("message_thread_id: 1" in str(message) for message in outputs)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_kind", ["timeout", "rpc"])
+async def test_login_ignores_topic_lookup_failures(monkeypatch, tmp_path, error_kind):
+    import tg_signer.core as core
+
+    chat = SimpleNamespace(
+        id=-1003,
+        title="forum-supergroup",
+        type=core.ChatType.SUPERGROUP,
+        username=None,
+        first_name=None,
+        last_name=None,
+        is_forum=True,
+    )
+    outputs = _setup_login_test(monkeypatch, [chat])
+
+    signer = UserSigner(
+        task_name="task",
+        account="acct",
+        session_dir=tmp_path,
+        workdir=tmp_path / ".signer",
+    )
+    if error_kind == "timeout":
+        error = asyncio.TimeoutError()
+    else:
+        error = core.errors.RPCError("boom")
+    signer.get_forum_topics = AsyncMock(side_effect=error)
+
+    await signer.login(num_of_dialogs=20, print_chat=True)
+
+    signer.get_forum_topics.assert_awaited_once_with(chat.id, limit=20)
+    assert signer.user.id == 123456
+    assert not any("message_thread_id:" in str(message) for message in outputs)
+
+
 @pytest.mark.asyncio
 async def test_call_telegram_api_retries_floodwait(monkeypatch, tmp_path):
     import tg_signer.core as core

@@ -472,14 +472,17 @@ class BaseUserWorker(Generic[ConfigT]):
                             )
                             if print_chat:
                                 print_to_user(readable_chat(chat))
-                                if chat.type == ChatType.SUPERGROUP:
+                                if chat.type == ChatType.SUPERGROUP and getattr(
+                                    chat, "is_forum", False
+                                ):
                                     try:
-                                        topics = await self.get_forum_topics(
-                                            chat.id, limit=20
+                                        topics = await asyncio.wait_for(
+                                            self.get_forum_topics(chat.id, limit=20),
+                                            timeout=5,
                                         )
                                         for topic in topics:
                                             print_to_user(f"  {readable_topic(topic)}")
-                                    except errors.RPCError:
+                                    except (asyncio.TimeoutError, errors.RPCError):
                                         # Keep login robust: many chats don't support
                                         # forum topics or the current account may not
                                         # have permissions to read them.
