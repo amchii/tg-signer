@@ -393,6 +393,88 @@ async def test_login_skips_topics_for_direct_chat(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_login_loads_forum_topics_after_dialog_fetch(monkeypatch, tmp_path):
+    import tg_signer.core as core
+
+    _clear_client_state()
+
+    async def fake_start(self):
+        await asyncio.sleep(0)
+
+    async def fake_stop(self):
+        await asyncio.sleep(0)
+
+    async def fake_get_me(self):
+        await asyncio.sleep(0)
+        return SimpleNamespace(id=123456)
+
+    async def fake_get_dialogs(self, limit):
+        del limit
+        yield SimpleNamespace(
+            chat=SimpleNamespace(
+                id=-1005,
+                title="forum-chat",
+                type=core.ChatType.FORUM,
+                username=None,
+                first_name=None,
+                last_name=None,
+                is_forum=False,
+            )
+        )
+
+    async def fake_get_forum_topics(self, chat_id, limit=20):
+        del chat_id, limit
+        yield SimpleNamespace(
+            id=1,
+            title="General",
+            is_closed=False,
+            is_pinned=False,
+        )
+
+    async def fake_save_session_string(self):
+        await asyncio.sleep(0)
+
+    active_operation = None
+
+    async def guarded_call(self, operation, call, **kwargs):
+        del kwargs
+        nonlocal active_operation
+        assert active_operation is None, (
+            f"nested api call detected: {active_operation} -> {operation}"
+        )
+        active_operation = operation
+        try:
+            return await call()
+        finally:
+            active_operation = None
+
+    outputs = []
+
+    def fake_print_to_user(message=""):
+        outputs.append(message)
+
+    monkeypatch.setattr(core.Client, "start", fake_start)
+    monkeypatch.setattr(core.Client, "stop", fake_stop)
+    monkeypatch.setattr(core.Client, "get_me", fake_get_me)
+    monkeypatch.setattr(core.Client, "get_dialogs", fake_get_dialogs)
+    monkeypatch.setattr(core.Client, "get_forum_topics", fake_get_forum_topics)
+    monkeypatch.setattr(core.Client, "save_session_string", fake_save_session_string)
+    monkeypatch.setattr(core.BaseUserWorker, "_call_telegram_api", guarded_call)
+    monkeypatch.setattr(core, "print_to_user", fake_print_to_user)
+
+    signer = UserSigner(
+        task_name="task",
+        account="acct",
+        session_dir=tmp_path,
+        workdir=tmp_path / ".signer",
+    )
+
+    await signer.login(num_of_dialogs=20, print_chat=True)
+
+    assert any("message_thread_id: 1" in str(message) for message in outputs)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("error_kind", ["timeout", "rpc"])
 async def test_login_ignores_topic_lookup_failures(monkeypatch, tmp_path, error_kind):
     import tg_signer.core as core

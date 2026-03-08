@@ -463,9 +463,11 @@ class BaseUserWorker(Generic[ConfigT]):
                     me = await self._call_telegram_api("users.GetFullUser", app.get_me)
 
                     async def load_latest_chats():
+                        chats = []
                         latest_chats = []
                         async for dialog in app.get_dialogs(limit=num_of_dialogs):
                             chat = dialog.chat
+                            chats.append(chat)
                             latest_chats.append(
                                 {
                                     "id": chat.id,
@@ -476,26 +478,28 @@ class BaseUserWorker(Generic[ConfigT]):
                                     "last_name": chat.last_name,
                                 }
                             )
-                            if print_chat:
-                                print_to_user(readable_chat(chat))
-                                if chat_has_forum_topics(chat):
-                                    try:
-                                        topics = await asyncio.wait_for(
-                                            self.get_forum_topics(chat.id, limit=20),
-                                            timeout=5,
-                                        )
-                                        for topic in topics:
-                                            print_to_user(f"  {readable_topic(topic)}")
-                                    except (asyncio.TimeoutError, errors.RPCError):
-                                        # Keep login robust: many chats don't support
-                                        # forum topics or the current account may not
-                                        # have permissions to read them.
-                                        pass
-                        return latest_chats
+                        return chats, latest_chats
 
-                    latest_chats = await self._call_telegram_api(
+                    chats, latest_chats = await self._call_telegram_api(
                         "messages.GetDialogs", load_latest_chats
                     )
+
+                    if print_chat:
+                        for chat in chats:
+                            print_to_user(readable_chat(chat))
+                            if chat_has_forum_topics(chat):
+                                try:
+                                    topics = await asyncio.wait_for(
+                                        self.get_forum_topics(chat.id, limit=20),
+                                        timeout=5,
+                                    )
+                                    for topic in topics:
+                                        print_to_user(f"  {readable_topic(topic)}")
+                                except (asyncio.TimeoutError, errors.RPCError):
+                                    # Keep login robust: many chats don't support
+                                    # forum topics or the current account may not
+                                    # have permissions to read them.
+                                    pass
 
                     with open(
                         self.get_user_dir(me).joinpath("latest_chats.json"),

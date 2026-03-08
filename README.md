@@ -128,7 +128,7 @@ tg-signer login
 ```
 
 根据提示输入手机号码和验证码进行登录并获取最近的聊天列表，确保你想要签到的聊天在列表内。
-对于开启话题的超级群，登录输出中会额外打印每个话题的 `message_thread_id`，可直接用于 `--message-thread-id`。
+对于论坛群组，登录输出中会额外打印每个话题的 `message_thread_id`，可直接用于 `--message-thread-id`。
 
 ### 获取群组话题 ID
 
@@ -136,7 +136,7 @@ tg-signer login
 tg-signer list-topics --chat_id -1003763902761
 ```
 
-会输出该群组可见话题的 `message_thread_id`、标题及状态，便于配置签到到指定话题。
+会输出该论坛群组可见话题的 `message_thread_id`、标题及状态，便于配置签到到指定话题。
 
 ### 发送一次消息
 
