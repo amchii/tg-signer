@@ -1,8 +1,27 @@
-from unittest.mock import MagicMock
+from types import SimpleNamespace
 
 import pytest
 
 from tg_signer.config import MatchConfig
+
+
+def make_message(
+    *,
+    chat_id=123,
+    chat_username=None,
+    text="test",
+    from_user=None,
+):
+    user = None
+    if from_user is not None:
+        defaults = {"id": None, "username": None, "is_self": False}
+        defaults.update(from_user)
+        user = SimpleNamespace(**defaults)
+    return SimpleNamespace(
+        chat=SimpleNamespace(id=chat_id, username=chat_username),
+        text=text,
+        from_user=user,
+    )
 
 
 class TestMatchConfig:
@@ -27,8 +46,7 @@ class TestMatchConfig:
             rule_value=rule_value,
             from_user_ids=from_user_ids,
         )
-        message = MagicMock()
-        message.from_user = MagicMock(**message_from_user)
+        message = make_message(from_user=message_from_user)
         assert config.match_user(message) == expected
 
     # 测试用例集
@@ -109,9 +127,41 @@ class TestMatchConfig:
             default_send_text="default text",
             send_text_search_regex=r"hello",
         )
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(ValueError, match="匹配成功但未能捕获关键词") as excinfo:
             config.get_send_text("hello world")
-        assert (
-            str(excinfo.value)
-            == f"{config}: 消息文本: 「hello world」匹配成功但未能捕获关键词, 请检查正则表达式"
+        assert "hello world" in str(excinfo.value)
+
+    def test_match_combines_chat_user_and_text(self):
+        config = MatchConfig(
+            chat_id="target_chat",
+            rule="contains",
+            rule_value="hello",
+            from_user_ids=["@alice"],
+            ignore_case=True,
         )
+        message = make_message(
+            chat_username="target_chat",
+            text="HELLO WORLD",
+            from_user={"username": "alice"},
+        )
+
+        assert config.match(message) is True
+
+    def test_match_rejects_self_when_always_ignore_me_enabled(self):
+        config = MatchConfig(
+            chat_id=123,
+            rule="all",
+            from_user_ids=["me"],
+            always_ignore_me=True,
+        )
+        message = make_message(
+            chat_id=123, text="anything", from_user={"is_self": True}
+        )
+
+        assert config.match(message) is False
+
+    def test_match_all_rule_accepts_message_without_sender(self):
+        config = MatchConfig(chat_id=123, rule="all")
+        message = make_message(chat_id=123, text=None, from_user=None)
+
+        assert config.match(message) is True

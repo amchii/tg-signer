@@ -1,5 +1,6 @@
 import asyncio
 
+import pytest
 from click.testing import CliRunner
 
 import tg_signer.cli.signer as signer_cli
@@ -80,41 +81,41 @@ class DummySigner:
         )
 
 
-def test_send_text_supports_message_thread_id(monkeypatch):
+@pytest.fixture
+def runner():
+    return CliRunner()
+
+
+@pytest.fixture
+def dummy_signer(monkeypatch):
     dummy = DummySigner()
     monkeypatch.setattr(signer_cli, "get_signer", lambda *_args, **_kwargs: dummy)
-    runner = CliRunner()
+    return dummy
 
+
+def test_send_text_supports_message_thread_id(dummy_signer, runner):
     result = runner.invoke(
         signer_cli.tg_signer,
         ["send-text", "--message-thread-id", "1", "123456", "checkin"],
     )
 
     assert result.exit_code == 0
-    assert dummy.calls[0]["method"] == "send_text"
-    assert dummy.calls[0]["message_thread_id"] == 1
+    assert dummy_signer.calls[0]["method"] == "send_text"
+    assert dummy_signer.calls[0]["message_thread_id"] == 1
 
 
-def test_send_dice_supports_message_thread_id(monkeypatch):
-    dummy = DummySigner()
-    monkeypatch.setattr(signer_cli, "get_signer", lambda *_args, **_kwargs: dummy)
-    runner = CliRunner()
-
+def test_send_dice_supports_message_thread_id(dummy_signer, runner):
     result = runner.invoke(
         signer_cli.tg_signer,
         ["send-dice", "--message-thread-id", "1", "123456", "🎲"],
     )
 
     assert result.exit_code == 0
-    assert dummy.calls[0]["method"] == "send_dice_cli"
-    assert dummy.calls[0]["message_thread_id"] == 1
+    assert dummy_signer.calls[0]["method"] == "send_dice_cli"
+    assert dummy_signer.calls[0]["message_thread_id"] == 1
 
 
-def test_schedule_messages_supports_message_thread_id(monkeypatch):
-    dummy = DummySigner()
-    monkeypatch.setattr(signer_cli, "get_signer", lambda *_args, **_kwargs: dummy)
-    runner = CliRunner()
-
+def test_schedule_messages_supports_message_thread_id(dummy_signer, runner):
     result = runner.invoke(
         signer_cli.tg_signer,
         [
@@ -129,21 +130,17 @@ def test_schedule_messages_supports_message_thread_id(monkeypatch):
     )
 
     assert result.exit_code == 0
-    assert dummy.calls[0]["method"] == "schedule_messages"
-    assert dummy.calls[0]["message_thread_id"] == 1
+    assert dummy_signer.calls[0]["method"] == "schedule_messages"
+    assert dummy_signer.calls[0]["message_thread_id"] == 1
 
 
-def test_list_topics(monkeypatch):
-    dummy = DummySigner()
-    monkeypatch.setattr(signer_cli, "get_signer", lambda *_args, **_kwargs: dummy)
-    runner = CliRunner()
-
+def test_list_topics(dummy_signer, runner):
     result = runner.invoke(
         signer_cli.tg_signer,
         ["list-topics", "--chat_id", "-1003763902761", "--limit", "50"],
     )
 
     assert result.exit_code == 0
-    assert dummy.calls[0]["method"] == "list_topics"
-    assert dummy.calls[0]["chat_id"] == -1003763902761
-    assert dummy.calls[0]["limit"] == 50
+    assert dummy_signer.calls[0]["method"] == "list_topics"
+    assert dummy_signer.calls[0]["chat_id"] == -1003763902761
+    assert dummy_signer.calls[0]["limit"] == 50

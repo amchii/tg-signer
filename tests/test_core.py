@@ -10,7 +10,6 @@ from tg_signer.config import SendTextAction, SignChatV3
 from tg_signer.core import (
     BaseUserWorker,
     ChatType,
-    UserSigner,
     chat_has_forum_topics,
     get_client,
     readable_chat,
@@ -18,22 +17,71 @@ from tg_signer.core import (
 
 
 class TestBaseUserWorker:
-    @pytest.mark.asyncio
-    async def test(self):
-        BaseUserWorker()
+    def test_initializes_defaults(self, signer_factory):
+        worker = signer_factory(cls=BaseUserWorker, task_name=None)
+
+        assert worker.task_name == "my_task"
+        assert worker.context == {}
+        assert worker.app.key.endswith("/acct")
 
 
-def _clear_client_state():
-    """Helper to clear module-level client caches between tests."""
-    import tg_signer.core as core
+def collect_outputs(monkeypatch, core):
+    outputs = []
 
-    core._CLIENT_INSTANCES.clear()
-    core._CLIENT_REFS.clear()
-    core._CLIENT_ASYNC_LOCKS.clear()
-    core._LOGIN_ASYNC_LOCKS.clear()
-    core._LOGIN_USERS.clear()
-    core._API_ASYNC_LOCKS.clear()
-    core._API_LAST_CALL_AT.clear()
+    def fake_print_to_user(message=""):
+        outputs.append(message)
+
+    monkeypatch.setattr(core, "print_to_user", fake_print_to_user)
+    return outputs
+
+
+def patch_client_methods(
+    monkeypatch,
+    core,
+    *,
+    start=None,
+    stop=None,
+    get_me=None,
+    get_dialogs=None,
+    save_session_string=None,
+):
+    async def fake_start(self):
+        await asyncio.sleep(0)
+
+    async def fake_stop(self):
+        await asyncio.sleep(0)
+
+    async def fake_get_me(self):
+        await asyncio.sleep(0)
+        return SimpleNamespace(id=123456)
+
+    async def fake_get_dialogs(self, limit):
+        del limit
+        for _ in ():
+            yield
+
+    async def fake_save_session_string(self):
+        await asyncio.sleep(0)
+
+    monkeypatch.setattr(core.Client, "start", start or fake_start)
+    monkeypatch.setattr(core.Client, "stop", stop or fake_stop)
+    monkeypatch.setattr(core.Client, "get_me", get_me or fake_get_me)
+    monkeypatch.setattr(core.Client, "get_dialogs", get_dialogs or fake_get_dialogs)
+    monkeypatch.setattr(
+        core.Client,
+        "save_session_string",
+        save_session_string or fake_save_session_string,
+    )
+
+
+def setup_login_test(monkeypatch, core, dialogs):
+    async def fake_get_dialogs(self, limit):
+        del limit
+        for chat in dialogs:
+            yield SimpleNamespace(chat=chat)
+
+    patch_client_methods(monkeypatch, core, get_dialogs=fake_get_dialogs)
+    return collect_outputs(monkeypatch, core)
 
 
 def test_get_client_caching(tmp_path):
@@ -41,8 +89,6 @@ def test_get_client_caching(tmp_path):
     instances for different keys.
     """
     import tg_signer.core as core
-
-    _clear_client_state()
 
     name = "acct"
     client1 = get_client(name=name, workdir=tmp_path)
@@ -128,8 +174,6 @@ async def test_client_context_manager_reference_counting_and_start_stop(
     """
     import tg_signer.core as core
 
-    _clear_client_state()
-
     start_stop_calls = []
 
     async def fake_start(self):
@@ -186,21 +230,14 @@ async def test_client_context_manager_reference_counting_and_start_stop(
 
 @pytest.mark.asyncio
 async def test_login_bootstrap_is_shared_between_concurrent_workers(
-    monkeypatch, tmp_path
+    monkeypatch, signer_factory
 ):
     """Concurrent workers with the same account should only perform one
     get_me/get_dialogs login bootstrap.
     """
     import tg_signer.core as core
 
-    _clear_client_state()
     calls = {"get_me": 0, "get_dialogs": 0, "save_session_string": 0}
-
-    async def fake_start(self):
-        await asyncio.sleep(0)
-
-    async def fake_stop(self):
-        await asyncio.sleep(0)
 
     async def fake_get_me(self):
         calls["get_me"] += 1
@@ -224,23 +261,17 @@ async def test_login_bootstrap_is_shared_between_concurrent_workers(
         calls["save_session_string"] += 1
         await asyncio.sleep(0)
 
-    monkeypatch.setattr(core.Client, "start", fake_start)
-    monkeypatch.setattr(core.Client, "stop", fake_stop)
-    monkeypatch.setattr(core.Client, "get_me", fake_get_me)
-    monkeypatch.setattr(core.Client, "get_dialogs", fake_get_dialogs)
-    monkeypatch.setattr(core.Client, "save_session_string", fake_save_session_string)
-
-    signer1 = UserSigner(
-        task_name="task_a",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
+    patch_client_methods(
+        monkeypatch,
+        core,
+        get_me=fake_get_me,
+        get_dialogs=fake_get_dialogs,
+        save_session_string=fake_save_session_string,
     )
-    signer2 = UserSigner(
+
+    signer1 = signer_factory(task_name="task_a")
+    signer2 = signer_factory(
         task_name="task_b",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
     )
 
     await asyncio.gather(
@@ -254,46 +285,8 @@ async def test_login_bootstrap_is_shared_between_concurrent_workers(
     assert signer1.user.id == signer2.user.id == 123456
 
 
-def _setup_login_test(monkeypatch, dialogs):
-    import tg_signer.core as core
-
-    _clear_client_state()
-
-    async def fake_start(self):
-        await asyncio.sleep(0)
-
-    async def fake_stop(self):
-        await asyncio.sleep(0)
-
-    async def fake_get_me(self):
-        await asyncio.sleep(0)
-        return SimpleNamespace(id=123456)
-
-    async def fake_get_dialogs(self, limit):
-        del limit
-        for chat in dialogs:
-            yield SimpleNamespace(chat=chat)
-
-    async def fake_save_session_string(self):
-        await asyncio.sleep(0)
-
-    outputs = []
-
-    def fake_print_to_user(message=""):
-        outputs.append(message)
-
-    monkeypatch.setattr(core.Client, "start", fake_start)
-    monkeypatch.setattr(core.Client, "stop", fake_stop)
-    monkeypatch.setattr(core.Client, "get_me", fake_get_me)
-    monkeypatch.setattr(core.Client, "get_dialogs", fake_get_dialogs)
-    monkeypatch.setattr(core.Client, "save_session_string", fake_save_session_string)
-    monkeypatch.setattr(core, "print_to_user", fake_print_to_user)
-
-    return outputs
-
-
 @pytest.mark.asyncio
-async def test_login_skips_topics_for_non_forum_supergroup(monkeypatch, tmp_path):
+async def test_login_skips_topics_for_non_forum_supergroup(monkeypatch, signer_factory):
     import tg_signer.core as core
 
     chat = SimpleNamespace(
@@ -305,14 +298,9 @@ async def test_login_skips_topics_for_non_forum_supergroup(monkeypatch, tmp_path
         last_name=None,
         is_forum=False,
     )
-    outputs = _setup_login_test(monkeypatch, [chat])
+    outputs = setup_login_test(monkeypatch, core, [chat])
 
-    signer = UserSigner(
-        task_name="task",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
-    )
+    signer = signer_factory()
     signer.get_forum_topics = AsyncMock(return_value=[])
 
     await signer.login(num_of_dialogs=20, print_chat=True)
@@ -330,8 +318,10 @@ async def test_login_skips_topics_for_non_forum_supergroup(monkeypatch, tmp_path
     ],
 )
 async def test_login_prints_topics_for_forum_chat(
-    monkeypatch, tmp_path, chat_type, is_forum
+    monkeypatch, signer_factory, chat_type, is_forum
 ):
+    import tg_signer.core as core
+
     chat = SimpleNamespace(
         id=-1002,
         title=f"{chat_type.name.lower()}-chat",
@@ -341,14 +331,9 @@ async def test_login_prints_topics_for_forum_chat(
         last_name=None,
         is_forum=is_forum,
     )
-    outputs = _setup_login_test(monkeypatch, [chat])
+    outputs = setup_login_test(monkeypatch, core, [chat])
 
-    signer = UserSigner(
-        task_name="task",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
-    )
+    signer = signer_factory()
     signer.get_forum_topics = AsyncMock(
         return_value=[
             SimpleNamespace(
@@ -367,7 +352,9 @@ async def test_login_prints_topics_for_forum_chat(
 
 
 @pytest.mark.asyncio
-async def test_login_skips_topics_for_direct_chat(monkeypatch, tmp_path):
+async def test_login_skips_topics_for_direct_chat(monkeypatch, signer_factory):
+    import tg_signer.core as core
+
     chat = SimpleNamespace(
         id=-1004,
         title="direct-chat",
@@ -377,14 +364,9 @@ async def test_login_skips_topics_for_direct_chat(monkeypatch, tmp_path):
         last_name=None,
         is_forum=False,
     )
-    outputs = _setup_login_test(monkeypatch, [chat])
+    outputs = setup_login_test(monkeypatch, core, [chat])
 
-    signer = UserSigner(
-        task_name="task",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
-    )
+    signer = signer_factory()
     signer.get_forum_topics = AsyncMock(return_value=[])
 
     await signer.login(num_of_dialogs=20, print_chat=True)
@@ -394,20 +376,8 @@ async def test_login_skips_topics_for_direct_chat(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_login_loads_forum_topics_after_dialog_fetch(monkeypatch, tmp_path):
+async def test_login_loads_forum_topics_after_dialog_fetch(monkeypatch, signer_factory):
     import tg_signer.core as core
-
-    _clear_client_state()
-
-    async def fake_start(self):
-        await asyncio.sleep(0)
-
-    async def fake_stop(self):
-        await asyncio.sleep(0)
-
-    async def fake_get_me(self):
-        await asyncio.sleep(0)
-        return SimpleNamespace(id=123456)
 
     async def fake_get_dialogs(self, limit):
         del limit
@@ -432,9 +402,6 @@ async def test_login_loads_forum_topics_after_dialog_fetch(monkeypatch, tmp_path
             is_pinned=False,
         )
 
-    async def fake_save_session_string(self):
-        await asyncio.sleep(0)
-
     active_operation = None
 
     async def guarded_call(self, operation, call, **kwargs):
@@ -449,26 +416,13 @@ async def test_login_loads_forum_topics_after_dialog_fetch(monkeypatch, tmp_path
         finally:
             active_operation = None
 
-    outputs = []
+    outputs = collect_outputs(monkeypatch, core)
 
-    def fake_print_to_user(message=""):
-        outputs.append(message)
-
-    monkeypatch.setattr(core.Client, "start", fake_start)
-    monkeypatch.setattr(core.Client, "stop", fake_stop)
-    monkeypatch.setattr(core.Client, "get_me", fake_get_me)
-    monkeypatch.setattr(core.Client, "get_dialogs", fake_get_dialogs)
+    patch_client_methods(monkeypatch, core, get_dialogs=fake_get_dialogs)
     monkeypatch.setattr(core.Client, "get_forum_topics", fake_get_forum_topics)
-    monkeypatch.setattr(core.Client, "save_session_string", fake_save_session_string)
     monkeypatch.setattr(core.BaseUserWorker, "_call_telegram_api", guarded_call)
-    monkeypatch.setattr(core, "print_to_user", fake_print_to_user)
 
-    signer = UserSigner(
-        task_name="task",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
-    )
+    signer = signer_factory()
 
     await signer.login(num_of_dialogs=20, print_chat=True)
 
@@ -477,17 +431,12 @@ async def test_login_loads_forum_topics_after_dialog_fetch(monkeypatch, tmp_path
 
 @pytest.mark.asyncio
 async def test_client_get_forum_topics_handles_missing_top_message(
-    monkeypatch, tmp_path
+    monkeypatch, signer_factory
 ):
     import tg_signer._kurigram.methods as kurigram_methods
     import tg_signer.core as core
 
-    signer = UserSigner(
-        task_name="task",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
-    )
+    signer = signer_factory()
     invoke_calls = []
 
     async def direct_call(_api_name, func):
@@ -535,7 +484,9 @@ async def test_client_get_forum_topics_handles_missing_top_message(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("error_kind", ["timeout", "rpc"])
-async def test_login_ignores_topic_lookup_failures(monkeypatch, tmp_path, error_kind):
+async def test_login_ignores_topic_lookup_failures(
+    monkeypatch, signer_factory, error_kind
+):
     import tg_signer.core as core
 
     chat = SimpleNamespace(
@@ -547,14 +498,9 @@ async def test_login_ignores_topic_lookup_failures(monkeypatch, tmp_path, error_
         last_name=None,
         is_forum=True,
     )
-    outputs = _setup_login_test(monkeypatch, [chat])
+    outputs = setup_login_test(monkeypatch, core, [chat])
 
-    signer = UserSigner(
-        task_name="task",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
-    )
+    signer = signer_factory()
     if error_kind == "timeout":
         error = asyncio.TimeoutError()
     else:
@@ -569,10 +515,9 @@ async def test_login_ignores_topic_lookup_failures(monkeypatch, tmp_path, error_
 
 
 @pytest.mark.asyncio
-async def test_call_telegram_api_retries_floodwait(monkeypatch, tmp_path):
+async def test_call_telegram_api_retries_floodwait(monkeypatch, signer_factory):
     import tg_signer.core as core
 
-    _clear_client_state()
     monkeypatch.setattr(core, "_API_MIN_INTERVAL_SECONDS", 0.0)
     monkeypatch.setattr(core, "_API_FLOODWAIT_PADDING_SECONDS", 0.0)
     monkeypatch.setattr(core, "_API_MAX_FLOODWAIT_RETRIES", 2)
@@ -586,12 +531,7 @@ async def test_call_telegram_api_retries_floodwait(monkeypatch, tmp_path):
 
     monkeypatch.setattr(core.asyncio, "sleep", fake_sleep)
 
-    signer = UserSigner(
-        task_name="task",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
-    )
+    signer = signer_factory()
 
     called = 0
 
@@ -610,24 +550,15 @@ async def test_call_telegram_api_retries_floodwait(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_call_telegram_api_is_serialized_for_same_account(monkeypatch, tmp_path):
+async def test_call_telegram_api_is_serialized_for_same_account(
+    monkeypatch, signer_factory
+):
     import tg_signer.core as core
 
-    _clear_client_state()
     monkeypatch.setattr(core, "_API_MIN_INTERVAL_SECONDS", 0.0)
 
-    signer1 = UserSigner(
-        task_name="task_a",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
-    )
-    signer2 = UserSigner(
-        task_name="task_b",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
-    )
+    signer1 = signer_factory(task_name="task_a")
+    signer2 = signer_factory(task_name="task_b")
 
     active = 0
     max_active = 0
@@ -649,13 +580,8 @@ async def test_call_telegram_api_is_serialized_for_same_account(monkeypatch, tmp
 
 
 @pytest.mark.asyncio
-async def test_wait_for_send_text_passes_message_thread_id(tmp_path):
-    signer = UserSigner(
-        task_name="task",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
-    )
+async def test_wait_for_send_text_passes_message_thread_id(signer_factory):
+    signer = signer_factory()
     signer.send_message = AsyncMock(return_value=None)
     chat = SignChatV3(
         chat_id=-1003763902761,
@@ -675,13 +601,8 @@ async def test_wait_for_send_text_passes_message_thread_id(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_on_message_routes_by_chat_id_and_message_thread_id(tmp_path):
-    signer = UserSigner(
-        task_name="task",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
-    )
+async def test_on_message_routes_by_chat_id_and_message_thread_id(signer_factory):
+    signer = signer_factory()
     signer.context = signer.ensure_ctx()
     route_key = signer.get_route_key(-1003763902761, 11)
     signer.context.sign_chats[route_key].append(
@@ -703,13 +624,8 @@ async def test_on_message_routes_by_chat_id_and_message_thread_id(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_on_message_falls_back_to_non_thread_route(tmp_path):
-    signer = UserSigner(
-        task_name="task",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
-    )
+async def test_on_message_falls_back_to_non_thread_route(signer_factory):
+    signer = signer_factory()
     signer.context = signer.ensure_ctx()
     fallback_key = signer.get_route_key(-1003763902761, None)
     signer.context.sign_chats[fallback_key].append(
@@ -730,13 +646,8 @@ async def test_on_message_falls_back_to_non_thread_route(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_schedule_messages_passes_message_thread_id(monkeypatch, tmp_path):
-    signer = UserSigner(
-        task_name="task",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
-    )
+async def test_schedule_messages_passes_message_thread_id(monkeypatch, signer_factory):
+    signer = signer_factory()
     signer.user = SimpleNamespace(id=1)
     calls = []
 
@@ -770,13 +681,8 @@ async def test_schedule_messages_passes_message_thread_id(monkeypatch, tmp_path)
 
 
 @pytest.mark.asyncio
-async def test_get_schedule_messages_calls_chat_level_api(monkeypatch, tmp_path):
-    signer = UserSigner(
-        task_name="task",
-        account="acct",
-        session_dir=tmp_path,
-        workdir=tmp_path / ".signer",
-    )
+async def test_get_schedule_messages_calls_chat_level_api(monkeypatch, signer_factory):
+    signer = signer_factory()
     signer.user = SimpleNamespace(id=1)
     calls = []
 
