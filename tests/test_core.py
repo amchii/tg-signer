@@ -103,6 +103,14 @@ def test_get_client_caching(tmp_path):
     assert key in core._CLIENT_INSTANCES
 
 
+def test_get_client_isolated_by_workdir(tmp_path):
+    client1 = get_client(name="acct", workdir=tmp_path / "one")
+    client2 = get_client(name="acct", workdir=tmp_path / "two")
+
+    assert client1 is not client2
+    assert client1.key != client2.key
+
+
 @pytest.mark.parametrize(
     ("chat_type", "expected"),
     [
@@ -225,6 +233,63 @@ async def test_client_context_manager_reference_counting_and_start_stop(
     assert start_stop_calls.count("stop") == 1
 
     # instance should be removed from cache after stop
+    assert key not in core._CLIENT_INSTANCES
+
+
+@pytest.mark.asyncio
+async def test_client_context_manager_ignores_connection_error_during_start(
+    monkeypatch, tmp_path
+):
+    import tg_signer.core as core
+
+    start_calls = 0
+
+    async def fake_start(self):
+        del self
+        nonlocal start_calls
+        start_calls += 1
+        raise ConnectionError("temporary network issue")
+
+    monkeypatch.setattr(core.Client, "start", fake_start)
+
+    client = get_client(name="acct", workdir=tmp_path)
+    key = client.key
+
+    async with client as current:
+        assert current is client
+        assert core._CLIENT_REFS[key] == 1
+
+    assert start_calls == 1
+    assert key not in core._CLIENT_INSTANCES
+
+
+@pytest.mark.asyncio
+async def test_client_context_manager_ignores_connection_error_during_stop(
+    monkeypatch, tmp_path
+):
+    import tg_signer.core as core
+
+    stop_calls = 0
+
+    async def fake_start(self):
+        self._started = True
+
+    async def fake_stop(self):
+        del self
+        nonlocal stop_calls
+        stop_calls += 1
+        raise ConnectionError("temporary network issue")
+
+    monkeypatch.setattr(core.Client, "start", fake_start)
+    monkeypatch.setattr(core.Client, "stop", fake_stop)
+
+    client = get_client(name="acct", workdir=tmp_path)
+    key = client.key
+
+    async with client:
+        assert core._CLIENT_REFS[key] == 1
+
+    assert stop_calls == 1
     assert key not in core._CLIENT_INSTANCES
 
 
@@ -550,6 +615,75 @@ async def test_call_telegram_api_retries_floodwait(monkeypatch, signer_factory):
 
 
 @pytest.mark.asyncio
+async def test_call_telegram_api_raises_after_max_floodwait_retries(
+    monkeypatch, signer_factory
+):
+    import tg_signer.core as core
+
+    monkeypatch.setattr(core, "_API_MIN_INTERVAL_SECONDS", 0.0)
+    monkeypatch.setattr(core, "_API_FLOODWAIT_PADDING_SECONDS", 0.0)
+    monkeypatch.setattr(core, "_API_MAX_FLOODWAIT_RETRIES", 1)
+
+    waits = []
+    real_sleep = core.asyncio.sleep
+
+    async def fake_sleep(seconds):
+        waits.append(seconds)
+        await real_sleep(0)
+
+    monkeypatch.setattr(core.asyncio, "sleep", fake_sleep)
+
+    signer = signer_factory()
+    called = 0
+
+    async def always_floodwait():
+        nonlocal called
+        called += 1
+        raise core.errors.FloodWait(2)
+
+    with pytest.raises(core.errors.FloodWait):
+        await signer._call_telegram_api("test", always_floodwait)
+
+    assert called == 2
+    assert waits == [2]
+    assert signer.app.key in core._API_LAST_CALL_AT
+
+
+@pytest.mark.asyncio
+async def test_call_telegram_api_without_floodwait_retry_raises_immediately(
+    monkeypatch, signer_factory
+):
+    import tg_signer.core as core
+
+    monkeypatch.setattr(core, "_API_MIN_INTERVAL_SECONDS", 0.0)
+    monkeypatch.setattr(core, "_API_FLOODWAIT_PADDING_SECONDS", 0.0)
+
+    waits = []
+    real_sleep = core.asyncio.sleep
+
+    async def fake_sleep(seconds):
+        waits.append(seconds)
+        await real_sleep(0)
+
+    monkeypatch.setattr(core.asyncio, "sleep", fake_sleep)
+
+    signer = signer_factory()
+
+    async def floodwait_once():
+        raise core.errors.FloodWait(3)
+
+    with pytest.raises(core.errors.FloodWait):
+        await signer._call_telegram_api(
+            "test",
+            floodwait_once,
+            retry_on_floodwait=False,
+        )
+
+    assert waits == []
+    assert signer.app.key in core._API_LAST_CALL_AT
+
+
+@pytest.mark.asyncio
 async def test_call_telegram_api_is_serialized_for_same_account(
     monkeypatch, signer_factory
 ):
@@ -643,6 +777,21 @@ async def test_on_message_falls_back_to_non_thread_route(signer_factory):
     await signer._on_message(signer.app, message)
 
     assert signer.context.chat_messages[fallback_key][100] is message
+
+
+@pytest.mark.asyncio
+async def test_on_message_ignores_unexpected_chat(signer_factory):
+    signer = signer_factory()
+    signer.context = signer.ensure_ctx()
+    message = SimpleNamespace(
+        chat=SimpleNamespace(id=-1003763902761),
+        message_thread_id=22,
+        id=100,
+    )
+
+    await signer._on_message(signer.app, message)
+
+    assert signer.context.chat_messages == {}
 
 
 @pytest.mark.asyncio
