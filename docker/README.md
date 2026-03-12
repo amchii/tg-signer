@@ -1,69 +1,85 @@
-## 先决条件
+# tg-signer Docker 使用指南
 
-工作目录下添加`start.sh`:
+## 快速开始
 
-```sh
-pip install -U tg-signer
+```bash
+# 1. 创建目录并进入
+mkdir -p /opt/tg-signer/data && cd /opt/tg-signer
 
-# 首次配置时使用，后续注释掉
-sleep infinity
+# 2. 下载 docker-compose.yml
+curl -O https://raw.githubusercontent.com/htazq/tg-signer/main/docker/docker-compose.yml
 
-# 配置完成后取消注释
-# tg-signer run mytasks
+# 3. 启动容器
+docker compose up -d
+
+# 4. 进入容器
+docker exec -it tg-signer bash
 ```
 
-## 使用Dockerfile
+## 首次配置
 
-* ### 构建镜像：
+在容器内执行：
 
-    ```sh
-    docker build -t tg-signer:latest -f CN.Dockerfile .
-    ```
+```bash
+# 1. 登录 Telegram
+tg-signer login
+# 按提示输入手机号和验证码
 
-* ### 运行
+# 2. 配置签到任务
+tg-signer run my_task
+# 按提示配置 Chat ID、签到时间、动作等
+# 配置完成后 Ctrl+C 退出
 
-    ```sh
-    docker run -d --name tg-signer --volume $PWD:/opt/tg-signer --env TG_PROXY=socks5://172.17.0.1:7890 tg-signer:latest bash start.sh
-    ```
-
-* ### 指定时区
-
-    构建镜像时可以通过 `TZ` 参数指定时区，例如：
-
-    ```sh
-    docker build --build-arg TZ=Europe/Paris -t tg-signer:latest -f CN.Dockerfile .
-    ```
-
-    运行容器时再次设置环境变量确保 `TZ` 传递进去（默认值 `Asia/Shanghai`）：
-
-    ```sh
-    docker run -d --name tg-signer \
-      --volume $PWD:/opt/tg-signer \
-      --env TG_PROXY=socks5://172.17.0.1:7890 \
-      --env TZ=Europe/Paris \
-      tg-signer:latest bash start.sh
-    ```
-
-## 或使用Docker Compose
-
-```sh
-docker-compose up -d
+# 3. 退出容器
+exit
 ```
 
-### 可选：调整时区
+## 启动任务
 
-通过 `TZ` 环境变量可以在启动和构建期间一致地设置时区（默认 `Asia/Shanghai`）。示例：
+配置完成后，修改 `docker-compose.yml`：
 
-```sh
-TZ=Europe/Paris docker compose up -d
+```yaml
+    # 注释掉这行
+    # command: ["sleep", "infinity"]
+    # 取消注释并填入任务名
+    command: ["tg-signer", "run", "任务名1", "任务名2"]
 ```
 
-如果需要重新构建镜像以更新时区（例如从 `docker compose build`），也可以加上同样的 `TZ` 环境变量：
+然后重启：
 
-```sh
-TZ=Europe/Paris docker compose build
+```bash
+docker compose up -d
+docker logs -f tg-signer  # 查看日志确认运行正常
 ```
 
-## 配置任务
+## 镜像说明
 
-接下来即可执行 `docker exec -it tg-signer bash` 进入容器进行登录和配置任务操作，见 [README.md](/README.md)。
+| 镜像 | 内存占用 | 说明 |
+|------|----------|------|
+| `ghcr.io/htazq/tg-signer:latest` | ~70MB | 推荐，CLI 版 |
+| `ghcr.io/htazq/tg-signer:latest-webui` | ~110MB | 包含 Web 管理界面 |
+
+支持平台：`linux/amd64`、`linux/arm64`
+
+## 环境变量
+
+| 变量 | 说明 |
+|------|------|
+| `TG_PROXY` | 代理地址，如 `socks5://host:port` |
+| `TZ` | 时区，默认 `Asia/Shanghai` |
+
+## 常用命令
+
+```bash
+# 查看日志
+docker logs -f tg-signer
+
+# 列出已配置的任务
+docker exec tg-signer tg-signer list
+
+# 手动执行一次签到
+docker exec tg-signer tg-signer run-once 任务名
+
+# 更新镜像
+docker compose pull && docker compose up -d
+```
