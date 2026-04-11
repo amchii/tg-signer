@@ -107,6 +107,7 @@ tg-signer run-once my_sign  # 直接运行一次'my_sign'任务
 tg-signer list-sign-records linuxdo -n 5  # 查看任务 linuxdo 最近 5 条签到记录
 tg-signer migrate-sign-records  # 将.signer/signs 下的签到记录迁移到 SQLite
 tg-signer send-text 8671234001 /test  # 向chat_id为'8671234001'的聊天发送'/test'文本
+tg-signer send-text @neo /test  # 向username为'@neo'的聊天发送'/test'文本
 tg-signer send-text --message-thread-id 1 -- -1003763902761 checkin  # 发送到群组话题(message_thread_id=1)
 tg-signer send-text -- -10006758812 浇水  # 对于负数需要使用POSIX风格，在短横线'-'前方加上'--'
 tg-signer send-text --delete-after 1 8671234001 /test  # 向chat_id为'8671234001'的聊天发送'/test'文本, 并在1秒后删除发送的消息
@@ -136,6 +137,7 @@ tg-signer login
 ```
 
 根据提示输入手机号码和验证码进行登录并获取最近的聊天列表，确保你想要签到的聊天在列表内。
+签到任务里的`chat_id`同时支持整数ID和以`@`开头的username，例如`@neo`。
 对于论坛群组，登录输出中会额外打印每个话题的 `message_thread_id`，可直接用于 `--message-thread-id`。
 
 ### 获取群组话题 ID
@@ -150,6 +152,7 @@ tg-signer list-topics --chat_id -1003763902761
 
 ```sh
 tg-signer send-text 8671234001 hello  # 向chat_id为'8671234001'的聊天发送'hello'文本
+tg-signer send-text @neo hello  # 向username为'@neo'的聊天发送'hello'文本
 ```
 
 ### 运行签到任务
@@ -171,7 +174,7 @@ tg-signer run linuxdo
 ```
 开始配置任务<linuxdo>
 第1个签到
-一. Chat ID（登录时最近对话输出中的ID）: 7661096533
+一. Chat ID（登录时最近对话输出中的ID或@username）: 7661096533
 二. Chat名称（可选）: jerry bot
 三. 是否发送到话题（message_thread_id）？(y/N)：y
 四. message_thread_id: 1

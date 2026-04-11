@@ -124,6 +124,7 @@ tg-signer run-once my_sign  # Run the 'my_sign' task once directly
 tg-signer list-sign-records linuxdo -n 5  # View the latest 5 check-in records for task linuxdo
 tg-signer migrate-sign-records  # Migrate check-in records under .signer/signs to SQLite
 tg-signer send-text 8671234001 /test  # Send '/test' to chat_id '8671234001'
+tg-signer send-text @neo /test  # Send '/test' to username '@neo'
 tg-signer send-text --message-thread-id 1 -- -1003763902761 checkin  # Send to a group topic (message_thread_id=1)
 tg-signer send-text -- -10006758812 water  # For negative numbers, use POSIX style and add '--' before '-'
 tg-signer send-text --delete-after 1 8671234001 /test  # Send '/test' to chat_id '8671234001' and delete it after 1 second
@@ -157,6 +158,9 @@ Follow the prompts to enter your phone number and verification code. The command
 will print your recent chats, so make sure the chat you want to use for
 check-ins is included.
 
+Signer `chat_id` also supports integer IDs and `@`-prefixed usernames such as
+`@neo`.
+
 For forum-style groups, the login output also prints each topic's
 `message_thread_id`, which can be used directly with `--message-thread-id`.
 
@@ -174,6 +178,7 @@ much easier.
 
 ```sh
 tg-signer send-text 8671234001 hello  # Send 'hello' to chat_id '8671234001'
+tg-signer send-text @neo hello  # Send 'hello' to username '@neo'
 ```
 
 ### Run a Check-in Task
@@ -195,7 +200,7 @@ Then follow the prompts to configure it.
 ```text
 Start configuring task <linuxdo>
 Check-in 1
-1. Chat ID (the ID shown in the recent chats output during login): 7661096533
+1. Chat ID (from recent chats during login or @username): 7661096533
 2. Chat name (optional): jerry bot
 3. Send to a topic (`message_thread_id`)? (y/N): y
 4. message_thread_id: 1

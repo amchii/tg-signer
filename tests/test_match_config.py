@@ -147,6 +147,12 @@ class TestMatchConfig:
 
         assert config.match(message) is True
 
+    def test_match_chat_accepts_at_prefixed_username(self):
+        config = MatchConfig(chat_id="@Target_Chat", rule="all")
+        message = make_message(chat_username="target_chat")
+
+        assert config.match_chat(message.chat) is True
+
     def test_match_rejects_self_when_always_ignore_me_enabled(self):
         config = MatchConfig(
             chat_id=123,

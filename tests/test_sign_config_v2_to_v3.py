@@ -147,3 +147,11 @@ class TestSignConfigV2ToCurrent:
             actions=[SendTextAction(text="checkin")],
         )
         assert chat.message_thread_id == 1
+
+    def test_sign_chat_v3_supports_username_chat_id(self):
+        chat = SignChatV3(
+            chat_id="@neo",
+            actions=[SendTextAction(text="checkin")],
+        )
+
+        assert chat.chat_id == "@neo"
