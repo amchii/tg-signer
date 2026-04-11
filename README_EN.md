@@ -28,7 +28,8 @@ pip install "tg-signer[speedup]"
 
 #### Docker
 
-No pre-built image is provided. You can build your own image using the Dockerfile and [README](./docker/README.md) in the [docker](./docker) directory.
+Official images are published to GitHub Container Registry in two variants: `ghcr.io/amchii/tg-signer:<tag>` (CLI, including `speedup/tgcrypto`) and `ghcr.io/amchii/tg-signer:<tag>-webui` (CLI + WebUI). Stable releases also update the `latest` and `latest-webui` tags.
+If you prefer to build locally, the existing Dockerfiles and local build flow remain available in the [docker](./docker) directory and its [README](./docker/README.md).
 
 ### Usage
 

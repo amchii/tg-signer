@@ -12,6 +12,39 @@ sleep infinity
 # tg-signer run mytasks
 ```
 
+## 使用预构建镜像
+
+发布版本会同步到 GitHub Container Registry：
+
+- `ghcr.io/amchii/tg-signer:<tag>`
+- `ghcr.io/amchii/tg-signer:latest`（仅稳定版 release 更新）
+- `ghcr.io/amchii/tg-signer:<tag>-webui`
+- `ghcr.io/amchii/tg-signer:latest-webui`（仅稳定版 release 更新）
+
+其中基础镜像默认包含 `speedup` 所需的 `tgcrypto`，`-webui` 变体会额外安装 `nicegui` 并默认监听 `8080` 端口。
+如果你需要使用国内镜像源或调整构建参数，仍然可以继续按下文方式在本地构建。
+
+### 直接运行预构建镜像
+
+CLI 镜像示例：
+
+```sh
+docker run -d --name tg-signer \
+  --volume $PWD:/opt/tg-signer \
+  --env TG_PROXY=socks5://172.17.0.1:7890 \
+  ghcr.io/amchii/tg-signer:latest bash start.sh
+```
+
+WebUI 镜像示例：
+
+```sh
+docker run -d --name tg-signer-webui \
+  --volume $PWD:/opt/tg-signer \
+  --publish 8080:8080 \
+  --env TG_SIGNER_GUI_AUTHCODE=change-me \
+  ghcr.io/amchii/tg-signer:latest-webui
+```
+
 ## 使用Dockerfile
 
 * ### 构建镜像：
