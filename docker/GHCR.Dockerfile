@@ -12,7 +12,7 @@ RUN mkdir -p dist && \
     pip wheel --wheel-dir dist tgcrypto && \
     pip wheel --no-deps --wheel-dir dist .
 
-FROM python:3.12-slim AS cli
+FROM python:3.12-slim-bookworm AS cli
 
 ARG TZ=Asia/Shanghai
 ENV TZ=${TZ}
