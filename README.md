@@ -36,7 +36,7 @@ pip install "tg-signer[gui]"
 
 ### Docker
 
-官方会在 GitHub Container Registry 提供两种预构建镜像：`ghcr.io/amchii/tg-signer:<tag>`（CLI，包含 `speedup/tgcrypto`）和 `ghcr.io/amchii/tg-signer:<tag>-webui`（CLI + WebUI）。稳定版 release 会额外同步 `latest` 与 `latest-webui` 标签。  
+官方会在 GitHub Container Registry 提供两种预构建镜像：`ghcr.io/amchii/tg-signer:<tag>`（CLI，包含 `speedup/tgcrypto`）和 `ghcr.io/amchii/tg-signer:<tag>-webui`（CLI + WebUI）。当推送合法 Docker tag 格式的 Git tag（例如 `v0.0.0`、`0.0.0`、`v0.0.0-beta`）时，会额外同步 `latest` 与 `latest-webui` 标签；也可以在 GitHub Actions 中手动触发 Docker 发布，仅推送指定测试 tag，不覆盖 `latest`。<br>
 如果需要自行构建镜像，本地 build 方式仍然保留，见 [docker](./docker) 目录下的 Dockerfile 和 [README](./docker/README.md) 。
 
 ### 使用方法

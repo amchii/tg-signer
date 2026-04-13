@@ -17,12 +17,21 @@ sleep infinity
 发布版本会同步到 GitHub Container Registry：
 
 - `ghcr.io/amchii/tg-signer:<tag>`
-- `ghcr.io/amchii/tg-signer:latest`（仅稳定版 release 更新）
+- `ghcr.io/amchii/tg-signer:latest`（当推送合法 Docker tag 格式的 Git tag，例如 `v0.0.0`、`0.0.0`、`v0.0.0-beta` 时更新）
 - `ghcr.io/amchii/tg-signer:<tag>-webui`
-- `ghcr.io/amchii/tg-signer:latest-webui`（仅稳定版 release 更新）
+- `ghcr.io/amchii/tg-signer:latest-webui`（当推送合法 Docker tag 格式的 Git tag，例如 `v0.0.0`、`0.0.0`、`v0.0.0-beta` 时更新）
 
-其中基础镜像默认包含 `speedup` 所需的 `tgcrypto`，`-webui` 变体会额外安装 `nicegui` 并默认监听 `8080` 端口。
+其中基础镜像默认包含 `speedup` 所需的 `tgcrypto`，`-webui` 变体会额外安装 `gui` 额外依赖（当前包含 `nicegui`）并默认监听 `8080` 端口。
 如果你需要使用国内镜像源或调整构建参数，仍然可以继续按下文方式在本地构建。
+
+### 手动测试推送
+
+如果你只想测试 Docker 镜像，而不想因为推送 Git tag 触发 PyPI 发布，可以在 GitHub Actions 中手动运行 `Publish Docker Image` workflow：
+
+- `ref`：要构建的分支、提交或 tag
+- `image_tag`：本次测试镜像要推送到 GHCR 的 tag，例如 `manual-test`、`pr-123`、`sha-abcdef`
+
+手动触发时只会推送你指定的测试 tag 和对应的 `-webui` tag，不会覆盖 `latest` 与 `latest-webui`。
 
 ### 直接运行预构建镜像
 

@@ -28,7 +28,7 @@ pip install "tg-signer[speedup]"
 
 #### Docker
 
-Official images are published to GitHub Container Registry in two variants: `ghcr.io/amchii/tg-signer:<tag>` (CLI, including `speedup/tgcrypto`) and `ghcr.io/amchii/tg-signer:<tag>-webui` (CLI + WebUI). Stable releases also update the `latest` and `latest-webui` tags.
+Official images are published to GitHub Container Registry in two variants: `ghcr.io/amchii/tg-signer:<tag>` (CLI, including `speedup/tgcrypto`) and `ghcr.io/amchii/tg-signer:<tag>-webui` (CLI + WebUI). Pushing a Git tag that is valid as a Docker tag, such as `v0.0.0`, `0.0.0`, or `v0.0.0-beta`, also updates the `latest` and `latest-webui` tags; you can also trigger the Docker publish workflow manually in GitHub Actions to push only a custom test tag without overwriting `latest`.
 If you prefer to build locally, the existing Dockerfiles and local build flow remain available in the [docker](./docker) directory and its [README](./docker/README.md).
 
 ### Usage
