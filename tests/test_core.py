@@ -7,7 +7,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from tg_signer.config import ClickKeyboardByTextAction, SendTextAction, SignChatV3
+from tg_signer.config import (
+    ClickKeyboardByTextAction,
+    SendTextAction,
+    SignChatV3,
+    SignConfigV3,
+)
 from tg_signer.core import (
     BaseUserWorker,
     ChatType,
@@ -975,3 +980,52 @@ async def test_get_schedule_messages_calls_chat_level_api(monkeypatch, signer_fa
     await signer.get_schedule_messages(-1003763902761)
 
     assert calls[0]["kwargs"] == {}
+
+
+def test_normal_run_skips_username_resolution_errors_per_chat(signer_factory):
+    import tg_signer.core as core
+
+    signer = signer_factory()
+    signer.user = SimpleNamespace(id=1)
+    signer.context = signer.ensure_ctx()
+    signer._validate_sign_at = lambda *_: "0 0 * * *"
+    signer.load_sign_record = lambda: {}
+    signer.persist_sign_record = lambda *_args, **_kwargs: None
+
+    config = SignConfigV3(
+        chats=[
+            SignChatV3(chat_id="@bad", actions=[SendTextAction(text="bad")]),
+            SignChatV3(chat_id=123456, actions=[SendTextAction(text="good")]),
+        ],
+        sign_at="0 0 * * *",
+        sign_interval=0,
+    )
+    signer.load_config = lambda _cls: config
+
+    signed_chats = []
+
+    async def fake_sign_a_chat(chat):
+        signed_chats.append(chat.chat_id)
+
+    signer.sign_a_chat = fake_sign_a_chat
+
+    class DummyApp:
+        key = "dummy-app"
+
+        def add_handler(self, *_args, **_kwargs):
+            return None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get_chat(self, chat_id):
+            raise core.errors.UsernameNotOccupied(chat_id)
+
+    signer.app = DummyApp()
+
+    asyncio.run(signer.normal_run(only_once=True))
+
+    assert signed_chats == [123456]

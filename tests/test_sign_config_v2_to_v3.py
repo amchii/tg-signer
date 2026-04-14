@@ -155,3 +155,12 @@ class TestSignConfigV2ToCurrent:
         )
 
         assert chat.chat_id == "@neo"
+
+    def test_sign_chat_v3_coerces_numeric_string_chat_id_to_int(self):
+        chat = SignChatV3(
+            chat_id="-1001234567890",
+            actions=[SendTextAction(text="checkin")],
+        )
+
+        assert chat.chat_id == -1001234567890
+        assert isinstance(chat.chat_id, int)

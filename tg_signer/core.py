@@ -1018,16 +1018,18 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
 
         async def sign_once():
             for chat in config.chats:
-                route_key = await self.resolve_chat_route_key(chat)
-                self.context.sign_chats[route_key].append(chat)
+                route_key = None
                 try:
+                    route_key = await self.resolve_chat_route_key(chat)
+                    self.context.sign_chats[route_key].append(chat)
                     await self.sign_a_chat(chat)
                 except errors.RPCError as _e:
                     self.log(f"签到失败: {_e} \nchat: \n{chat}")
                     logger.warning(_e, exc_info=True)
                     continue
 
-                self.context.chat_messages[route_key].clear()
+                if route_key is not None:
+                    self.context.chat_messages[route_key].clear()
                 await asyncio.sleep(config.sign_interval)
             self.persist_sign_record(sign_record, str(now.date()), now.isoformat())
 

@@ -112,6 +112,17 @@ def test_send_text_supports_message_thread_id(dummy_signer, runner):
     assert dummy_signer.calls[0]["message_thread_id"] == 1
 
 
+def test_send_text_accepts_username_chat_id(dummy_signer, runner):
+    result = runner.invoke(
+        signer_cli.tg_signer,
+        ["send-text", "@neo", "checkin"],
+    )
+
+    assert result.exit_code == 0
+    assert dummy_signer.calls[0]["method"] == "send_text"
+    assert dummy_signer.calls[0]["chat_id"] == "@neo"
+
+
 def test_send_dice_supports_message_thread_id(dummy_signer, runner):
     result = runner.invoke(
         signer_cli.tg_signer,
@@ -121,6 +132,17 @@ def test_send_dice_supports_message_thread_id(dummy_signer, runner):
     assert result.exit_code == 0
     assert dummy_signer.calls[0]["method"] == "send_dice_cli"
     assert dummy_signer.calls[0]["message_thread_id"] == 1
+
+
+def test_send_dice_accepts_username_chat_id(dummy_signer, runner):
+    result = runner.invoke(
+        signer_cli.tg_signer,
+        ["send-dice", "@neo", "🎲"],
+    )
+
+    assert result.exit_code == 0
+    assert dummy_signer.calls[0]["method"] == "send_dice_cli"
+    assert dummy_signer.calls[0]["chat_id"] == "@neo"
 
 
 def test_schedule_messages_supports_message_thread_id(dummy_signer, runner):
@@ -142,6 +164,34 @@ def test_schedule_messages_supports_message_thread_id(dummy_signer, runner):
     assert dummy_signer.calls[0]["message_thread_id"] == 1
 
 
+def test_schedule_messages_accepts_username_chat_id(dummy_signer, runner):
+    result = runner.invoke(
+        signer_cli.tg_signer,
+        [
+            "schedule-messages",
+            "--crontab",
+            "0 6 * * *",
+            "@neo",
+            "checkin",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert dummy_signer.calls[0]["method"] == "schedule_messages"
+    assert dummy_signer.calls[0]["chat_id"] == "@neo"
+
+
+def test_list_schedule_messages_accepts_username_chat_id(dummy_signer, runner):
+    result = runner.invoke(
+        signer_cli.tg_signer,
+        ["list-schedule-messages", "@neo"],
+    )
+
+    assert result.exit_code == 0
+    assert dummy_signer.calls[0]["method"] == "get_schedule_messages"
+    assert dummy_signer.calls[0]["chat_id"] == "@neo"
+
+
 def test_list_topics(dummy_signer, runner):
     result = runner.invoke(
         signer_cli.tg_signer,
@@ -152,3 +202,14 @@ def test_list_topics(dummy_signer, runner):
     assert dummy_signer.calls[0]["method"] == "list_topics"
     assert dummy_signer.calls[0]["chat_id"] == -1003763902761
     assert dummy_signer.calls[0]["limit"] == 50
+
+
+def test_list_topics_accepts_username_chat_id(dummy_signer, runner):
+    result = runner.invoke(
+        signer_cli.tg_signer,
+        ["list-topics", "--chat_id", "@neo", "--limit", "50"],
+    )
+
+    assert result.exit_code == 0
+    assert dummy_signer.calls[0]["method"] == "list_topics"
+    assert dummy_signer.calls[0]["chat_id"] == "@neo"

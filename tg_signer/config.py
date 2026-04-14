@@ -13,7 +13,7 @@ from typing import (
     Union,
 )
 
-from pydantic import AnyHttpUrl, BaseModel, ValidationError
+from pydantic import AnyHttpUrl, BaseModel, ValidationError, field_validator
 from pyrogram.types import Chat, Message
 from typing_extensions import Self, TypeAlias
 
@@ -35,6 +35,26 @@ def parse_chat_id_or_username(value: Union[int, str]) -> ChatId:
             raise ValueError("username cannot be empty")
         return value
     return int(value)
+
+
+def coerce_chat_id_or_username(value: Union[int, str]) -> ChatId:
+    if isinstance(value, int):
+        return value
+    value = str(value).strip()
+    if not value:
+        raise ValueError("chat_id cannot be empty")
+    if value == "@":
+        raise ValueError("username cannot be empty")
+    try:
+        return int(value)
+    except ValueError:
+        return value
+
+
+def parse_optional_chat_id_or_username(value: Union[int, str, None]) -> Optional[ChatId]:
+    if value is None:
+        return None
+    return coerce_chat_id_or_username(value)
 
 
 def get_display_width(text: str) -> int:
@@ -252,6 +272,11 @@ class SignChatV3(BaseJSONConfig):
     actions: List[ActionT]
     action_interval: float = 1  # actions的间隔时间，单位秒
 
+    @field_validator("chat_id", mode="before")
+    @classmethod
+    def _parse_chat_id(cls, value):
+        return coerce_chat_id_or_username(value)
+
     def __repr__(self) -> str:
         return (
             f"SignChatV3(chat_id={self.chat_id}, "
@@ -397,6 +422,11 @@ class MatchConfig(BaseJSONConfig):
     push_via_server_chan: bool = False  # 将消息通过server酱推送
     server_chan_send_key: Optional[str] = None  # server酱的sendkey
 
+    @field_validator("chat_id", "forward_to_chat_id", mode="before")
+    @classmethod
+    def _parse_optional_chat_id(cls, value):
+        return parse_optional_chat_id_or_username(value)
+
     def __str__(self):
         return (
             f"{self.__class__.__name__}(chat_id={self.chat_id}, rule={self.rule}, rule_value={self.rule_value}),"
@@ -453,6 +483,8 @@ class MatchConfig(BaseJSONConfig):
         return False
 
     def match_chat(self, chat: "Chat"):
+        if self.chat_id is None:
+            return False
         if isinstance(self.chat_id, int):
             return self.chat_id == chat.id
         if not chat.username:

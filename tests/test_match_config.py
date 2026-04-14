@@ -153,6 +153,18 @@ class TestMatchConfig:
 
         assert config.match_chat(message.chat) is True
 
+    def test_match_chat_returns_false_when_chat_id_is_none(self):
+        config = MatchConfig(rule="all")
+        message = make_message(chat_username="target_chat")
+
+        assert config.match_chat(message.chat) is False
+
+    def test_match_config_coerces_numeric_string_chat_id_to_int(self):
+        config = MatchConfig(chat_id="-1001234567890", rule="all")
+
+        assert config.chat_id == -1001234567890
+        assert isinstance(config.chat_id, int)
+
     def test_match_rejects_self_when_always_ignore_me_enabled(self):
         config = MatchConfig(
             chat_id=123,
