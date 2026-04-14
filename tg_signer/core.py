@@ -21,6 +21,7 @@ from typing import (
     Union,
 )
 from urllib import parse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from croniter import CroniterBadCronError, croniter
@@ -138,6 +139,8 @@ _API_LAST_CALL_AT: dict[str, float] = {}
 _API_MIN_INTERVAL_SECONDS = 0.35
 _API_FLOODWAIT_PADDING_SECONDS = 0.5
 _API_MAX_FLOODWAIT_RETRIES = 2
+DEFAULT_TIMEZONE_NAME = "Asia/Shanghai"
+DEFAULT_TIMEZONE = timezone(timedelta(hours=8), name=DEFAULT_TIMEZONE_NAME)
 
 RouteKey = tuple[int, Optional[int]]
 
@@ -253,8 +256,56 @@ def get_client(
     return client
 
 
+def _load_timezone(name: str | None):
+    if not name:
+        return None
+    name = name.strip()
+    if not name:
+        return None
+    try:
+        return ZoneInfo(name)
+    except ZoneInfoNotFoundError:
+        return None
+
+
+def get_system_timezone_name() -> str | None:
+    timezone_file = pathlib.Path("/etc/timezone")
+    if timezone_file.is_file():
+        try:
+            name = timezone_file.read_text(encoding="utf-8").strip()
+        except OSError:
+            name = ""
+        if name:
+            return name
+
+    localtime = pathlib.Path("/etc/localtime")
+    if localtime.exists():
+        try:
+            resolved_localtime = localtime.resolve()
+        except OSError:
+            return None
+        parts = resolved_localtime.parts
+        if "zoneinfo" not in parts:
+            return None
+        zoneinfo_index = len(parts) - 1 - parts[::-1].index("zoneinfo")
+        name_parts = parts[zoneinfo_index + 1 :]
+        if name_parts:
+            return "/".join(name_parts)
+    return None
+
+
+def get_timezone():
+    tz = _load_timezone(os.environ.get("TZ"))
+    if tz is not None:
+        return tz
+    tz = _load_timezone(get_system_timezone_name())
+    if tz is not None:
+        return tz
+    return _load_timezone(DEFAULT_TIMEZONE_NAME) or DEFAULT_TIMEZONE
+
+
 def get_now():
-    return datetime.now(tz=timezone(timedelta(hours=8)))
+    return datetime.now(tz=get_timezone())
 
 
 def make_dirs(path: pathlib.Path, exist_ok=True):

@@ -70,13 +70,15 @@ docker run -d --name tg-signer-webui \
 
 * ### 指定时区
 
-    构建镜像时可以通过 `TZ` 参数指定时区，例如：
+    调度命令会按 `TZ -> 系统本地时区 -> Asia/Shanghai` 的顺序解析时区。
+    如果希望容器内的签到时间按指定时区计算，运行时传入 `TZ` 即可。
+    构建镜像时也可以通过 `TZ` 参数让容器的系统时区保持一致，例如：
 
     ```sh
     docker build --build-arg TZ=Europe/Paris -t tg-signer:latest -f CN.Dockerfile .
     ```
 
-    运行容器时再次设置环境变量确保 `TZ` 传递进去（默认值 `Asia/Shanghai`）：
+    运行容器时再次设置环境变量确保 `TZ` 传递进去：
 
     ```sh
     docker run -d --name tg-signer \
@@ -94,13 +96,13 @@ docker-compose up -d
 
 ### 可选：调整时区
 
-通过 `TZ` 环境变量可以在启动和构建期间一致地设置时区（默认 `Asia/Shanghai`）。示例：
+通过 `TZ` 环境变量可以在启动和构建期间一致地设置时区。运行时会优先读取 `TZ`；如果未设置，则回退到系统本地时区，再回退到 `Asia/Shanghai`。示例：
 
 ```sh
 TZ=Europe/Paris docker compose up -d
 ```
 
-如果需要重新构建镜像以更新时区（例如从 `docker compose build`），也可以加上同样的 `TZ` 环境变量：
+如果还需要让镜像内的系统时区文件一起更新（例如从 `docker compose build` 构建自定义镜像），也可以在构建时加上同样的 `TZ` 环境变量：
 
 ```sh
 TZ=Europe/Paris docker compose build
