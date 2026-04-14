@@ -259,12 +259,33 @@ def get_client(
 def _load_timezone(name: str | None):
     if not name:
         return None
-    name = name.strip()
-    if not name:
+    candidate = name.strip()
+    if not candidate:
+        return None
+    if candidate.startswith(":"):
+        candidate = candidate[1:].strip()
+        if not candidate:
+            return None
+    if candidate.startswith(("/", ".", "~")):
+        tz = _load_timezone_from_file(candidate)
+        if tz is not None:
+            return tz
+    try:
+        return ZoneInfo(candidate)
+    except ZoneInfoNotFoundError:
+        return None
+
+
+def _load_timezone_from_file(path: str | os.PathLike[str] | None):
+    if not path:
+        return None
+    path = pathlib.Path(path).expanduser()
+    if not path.is_file():
         return None
     try:
-        return ZoneInfo(name)
-    except ZoneInfoNotFoundError:
+        with path.open("rb") as fp:
+            return ZoneInfo.from_file(fp)
+    except (OSError, ValueError, ZoneInfoNotFoundError):
         return None
 
 
@@ -294,11 +315,24 @@ def get_system_timezone_name() -> str | None:
     return None
 
 
+def _get_system_timezone():
+    tz = _load_timezone(get_system_timezone_name())
+    if tz is not None:
+        return tz
+    tz = _load_timezone_from_file("/etc/localtime")
+    if tz is not None:
+        return tz
+    local_tz = datetime.now().astimezone().tzinfo
+    if local_tz is not None:
+        return local_tz
+    return None
+
+
 def get_timezone():
     tz = _load_timezone(os.environ.get("TZ"))
     if tz is not None:
         return tz
-    tz = _load_timezone(get_system_timezone_name())
+    tz = _get_system_timezone()
     if tz is not None:
         return tz
     return _load_timezone(DEFAULT_TIMEZONE_NAME) or DEFAULT_TIMEZONE
