@@ -289,39 +289,7 @@ def _load_timezone_from_file(path: str | os.PathLike[str] | None):
         return None
 
 
-def get_system_timezone_name() -> str | None:
-    timezone_file = pathlib.Path("/etc/timezone")
-    if timezone_file.is_file():
-        try:
-            name = timezone_file.read_text(encoding="utf-8").strip()
-        except OSError:
-            name = ""
-        if name:
-            return name
-
-    localtime = pathlib.Path("/etc/localtime")
-    if localtime.exists():
-        try:
-            resolved_localtime = localtime.resolve()
-        except OSError:
-            return None
-        parts = resolved_localtime.parts
-        if "zoneinfo" not in parts:
-            return None
-        zoneinfo_index = len(parts) - 1 - parts[::-1].index("zoneinfo")
-        name_parts = parts[zoneinfo_index + 1 :]
-        if name_parts:
-            return "/".join(name_parts)
-    return None
-
-
-def _get_system_timezone():
-    tz = _load_timezone(get_system_timezone_name())
-    if tz is not None:
-        return tz
-    tz = _load_timezone_from_file("/etc/localtime")
-    if tz is not None:
-        return tz
+def _get_local_timezone():
     local_tz = datetime.now().astimezone().tzinfo
     if local_tz is not None:
         return local_tz
@@ -332,7 +300,7 @@ def get_timezone():
     tz = _load_timezone(os.environ.get("TZ"))
     if tz is not None:
         return tz
-    tz = _get_system_timezone()
+    tz = _get_local_timezone()
     if tz is not None:
         return tz
     return _load_timezone(DEFAULT_TIMEZONE_NAME) or DEFAULT_TIMEZONE

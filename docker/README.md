@@ -70,7 +70,7 @@ docker run -d --name tg-signer-webui \
 
 * ### 指定时区
 
-    调度命令会按 `TZ -> 系统本地时区 -> Asia/Shanghai` 的顺序解析时区。
+    调度命令会按 `TZ -> Python 本地时区 -> Asia/Shanghai` 的顺序解析时区。
     如果希望容器内的签到时间按指定时区计算，运行时传入 `TZ` 即可。
     构建镜像时也可以通过 `TZ` 参数让容器的系统时区保持一致，例如：
 
@@ -96,7 +96,7 @@ docker-compose up -d
 
 ### 可选：调整时区
 
-通过 `TZ` 环境变量可以在启动和构建期间一致地设置时区。运行时会优先读取 `TZ`；如果未设置，则回退到系统本地时区，再回退到 `Asia/Shanghai`。示例：
+通过 `TZ` 环境变量可以在启动和构建期间一致地设置时区。运行时会优先读取 `TZ`；如果未设置，则回退到 Python 本地时区，再回退到 `Asia/Shanghai`。示例：
 
 ```sh
 TZ=Europe/Paris docker compose up -d

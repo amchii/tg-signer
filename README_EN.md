@@ -166,7 +166,7 @@ Scheduling-related commands such as `run` and `schedule-messages` resolve the
 time zone in the following order:
 
 1. the `TZ` environment variable
-2. the system local time zone
+2. the local time zone recognized by Python
 3. `Asia/Shanghai` as the final fallback
 
 If you need schedules to follow a specific time zone, set `TZ` before starting

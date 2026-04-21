@@ -143,7 +143,7 @@ tg-signer login
 调度相关命令（如 `run` 和 `schedule-messages`）会按以下顺序解析时区：
 
 1. 环境变量 `TZ`
-2. 系统本地时区
+2. Python 识别到的本地时区
 3. 默认回退到 `Asia/Shanghai`
 
 如果你需要按特定时区计算下次执行时间，直接在运行前设置 `TZ` 即可。
