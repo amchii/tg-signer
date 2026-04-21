@@ -1,5 +1,8 @@
 from datetime import time
 
+import pytest
+from pydantic import ValidationError
+
 from tg_signer.config import (
     ChooseOptionByImageAction,
     ClickKeyboardByTextAction,
@@ -164,3 +167,10 @@ class TestSignConfigV2ToCurrent:
 
         assert chat.chat_id == -1001234567890
         assert isinstance(chat.chat_id, int)
+
+    def test_sign_chat_v3_rejects_username_without_at_prefix(self):
+        with pytest.raises(ValidationError):
+            SignChatV3(
+                chat_id="neo",
+                actions=[SendTextAction(text="checkin")],
+            )

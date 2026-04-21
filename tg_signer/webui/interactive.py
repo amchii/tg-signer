@@ -8,13 +8,13 @@ from tg_signer.config import (
     ActionT,
     ChooseOptionByImageAction,
     ClickKeyboardByTextAction,
-    parse_chat_id_or_username,
     ReplyByCalculationProblemAction,
     SendDiceAction,
     SendTextAction,
     SignChatV3,
     SignConfigV3,
     SupportAction,
+    parse_chat_id_or_username,
 )
 from tg_signer.webui.data import load_user_infos, save_config
 

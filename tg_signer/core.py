@@ -50,7 +50,6 @@ from tg_signer.config import (
     HttpCallback,
     MatchConfig,
     MonitorConfig,
-    parse_chat_id_or_username,
     ReplyByCalculationProblemAction,
     SendDiceAction,
     SendTextAction,
@@ -58,6 +57,7 @@ from tg_signer.config import (
     SignConfigV3,
     SupportAction,
     UDPForward,
+    parse_chat_id_or_username,
 )
 
 from ._kurigram import SafeGetForumTopics
@@ -549,6 +549,7 @@ class BaseUserWorker(Generic[ConfigT]):
         :param chat_id:
         :param text:
         :param delete_after: 秒, 发送消息后进行删除，``None`` 表示不删除, ``0`` 表示立即删除.
+        :param message_thread_id: 群组内话题ID
         :param kwargs:
         :return:
         """
@@ -774,10 +775,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
 
     def get_runtime_route_key(self, chat: SignChatV3) -> RouteKey:
         route_key = self.get_route_key(chat.chat_id, chat.message_thread_id)
-        context = getattr(self, "context", None)
-        if isinstance(context, UserSignerWorkerContext):
-            return context.resolved_route_keys.get(route_key, route_key)
-        return route_key
+        return self.context.resolved_route_keys.get(route_key, route_key)
 
     @property
     def sign_record_file(self):
@@ -1218,7 +1216,6 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         return False
 
     async def wait_for(self, chat: SignChatV3, action: ActionT, timeout=10):
-        route_key = self.get_runtime_route_key(chat)
         if isinstance(action, SendTextAction):
             return await self.send_message(
                 chat.chat_id,
@@ -1233,6 +1230,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                 chat.delete_after,
                 message_thread_id=chat.message_thread_id,
             )
+        route_key = self.get_runtime_route_key(chat)
         self.context.waiter.add(route_key)
         start = time.perf_counter()
         last_message = None
