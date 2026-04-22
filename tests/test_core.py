@@ -7,7 +7,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from tg_signer.config import SendTextAction, SignChatV3
+from tg_signer.config import (
+    ClickKeyboardByTextAction,
+    SendTextAction,
+    SignChatV3,
+    SignConfigV3,
+)
 from tg_signer.core import (
     BaseUserWorker,
     ChatType,
@@ -791,6 +796,48 @@ async def test_wait_for_send_text_passes_message_thread_id(signer_factory):
 
 
 @pytest.mark.asyncio
+async def test_resolve_chat_route_key_supports_username(monkeypatch, signer_factory):
+    signer = signer_factory()
+    signer.context = signer.ensure_ctx()
+    chat = SignChatV3(
+        chat_id="@neo",
+        actions=[SendTextAction(text="checkin")],
+    )
+
+    async def fake_get_chat(chat_id):
+        assert chat_id == "@neo"
+        return SimpleNamespace(id=-1003763902761)
+
+    monkeypatch.setattr(signer.app, "get_chat", fake_get_chat)
+
+    route_key = await signer.resolve_chat_route_key(chat)
+
+    assert route_key == (-1003763902761, None)
+    assert signer.context.resolved_route_keys[("@neo", None)] == route_key
+
+
+@pytest.mark.asyncio
+async def test_wait_for_uses_resolved_route_key_for_username(signer_factory):
+    signer = signer_factory()
+    signer.context = signer.ensure_ctx()
+    chat = SignChatV3(
+        chat_id="@neo",
+        actions=[ClickKeyboardByTextAction(text="签到")],
+    )
+    raw_key = signer.get_route_key("@neo", None)
+    resolved_key = signer.get_route_key(-1003763902761, None)
+    message = SimpleNamespace(id=99, text="签到", photo=None, reply_markup=None)
+    signer.context.resolved_route_keys[raw_key] = resolved_key
+    signer.context.chat_messages[resolved_key][99] = message
+    signer._click_keyboard_by_text = AsyncMock(return_value=True)
+
+    await signer.wait_for(chat, chat.actions[0], timeout=0.5)
+
+    signer._click_keyboard_by_text.assert_awaited_once_with(chat.actions[0], message)
+    assert signer.context.chat_messages[resolved_key][99] is None
+
+
+@pytest.mark.asyncio
 async def test_on_message_routes_by_chat_id_and_message_thread_id(signer_factory):
     signer = signer_factory()
     signer.context = signer.ensure_ctx()
@@ -833,6 +880,28 @@ async def test_on_message_falls_back_to_non_thread_route(signer_factory):
     await signer._on_message(signer.app, message)
 
     assert signer.context.chat_messages[fallback_key][100] is message
+
+
+@pytest.mark.asyncio
+async def test_on_message_routes_username_chat_by_resolved_chat_id(signer_factory):
+    signer = signer_factory()
+    signer.context = signer.ensure_ctx()
+    resolved_key = signer.get_route_key(-1003763902761, None)
+    signer.context.sign_chats[resolved_key].append(
+        SignChatV3(
+            chat_id="@neo",
+            actions=[SendTextAction(text="checkin")],
+        )
+    )
+    message = SimpleNamespace(
+        chat=SimpleNamespace(id=-1003763902761),
+        message_thread_id=None,
+        id=101,
+    )
+
+    await signer._on_message(signer.app, message)
+
+    assert signer.context.chat_messages[resolved_key][101] is message
 
 
 @pytest.mark.asyncio
@@ -911,3 +980,52 @@ async def test_get_schedule_messages_calls_chat_level_api(monkeypatch, signer_fa
     await signer.get_schedule_messages(-1003763902761)
 
     assert calls[0]["kwargs"] == {}
+
+
+def test_normal_run_skips_username_resolution_errors_per_chat(signer_factory):
+    import tg_signer.core as core
+
+    signer = signer_factory()
+    signer.user = SimpleNamespace(id=1)
+    signer.context = signer.ensure_ctx()
+    signer._validate_sign_at = lambda *_: "0 0 * * *"
+    signer.load_sign_record = lambda: {}
+    signer.persist_sign_record = lambda *_args, **_kwargs: None
+
+    config = SignConfigV3(
+        chats=[
+            SignChatV3(chat_id="@bad", actions=[SendTextAction(text="bad")]),
+            SignChatV3(chat_id=123456, actions=[SendTextAction(text="good")]),
+        ],
+        sign_at="0 0 * * *",
+        sign_interval=0,
+    )
+    signer.load_config = lambda _cls: config
+
+    signed_chats = []
+
+    async def fake_sign_a_chat(chat):
+        signed_chats.append(chat.chat_id)
+
+    signer.sign_a_chat = fake_sign_a_chat
+
+    class DummyApp:
+        key = "dummy-app"
+
+        def add_handler(self, *_args, **_kwargs):
+            return None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get_chat(self, chat_id):
+            raise core.errors.UsernameNotOccupied(chat_id)
+
+    signer.app = DummyApp()
+
+    asyncio.run(signer.normal_run(only_once=True))
+
+    assert signed_chats == [123456]

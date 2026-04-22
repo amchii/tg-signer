@@ -14,6 +14,7 @@ from tg_signer.config import (
     SignChatV3,
     SignConfigV3,
     SupportAction,
+    parse_chat_id_or_username,
 )
 from tg_signer.webui.data import load_user_infos, save_config
 
@@ -240,9 +241,9 @@ class InteractiveSignerConfig:
             with ui.grid(columns=2).classes("w-full gap-4 mb-4"):
                 id_input = (
                     ui.input(
-                        label="Chat ID",
+                        label="Chat ID / @username",
                         value=str(d_chat_id) if d_chat_id else "",
-                        placeholder="整数ID (点击选择)",
+                        placeholder="整数ID 或 @username (点击选择)",
                     )
                     .props("outlined")
                     .on("click", show_import_dialog)
@@ -402,9 +403,11 @@ class InteractiveSignerConfig:
             def save_chat():
                 try:
                     try:
-                        cid = int(id_input.value)
-                    except (ValueError, TypeError):
-                        raise ValueError("Chat ID不能为空且必须是整数")
+                        cid = parse_chat_id_or_username(id_input.value)
+                    except (ValueError, TypeError) as e:
+                        raise ValueError(
+                            "Chat ID不能为空，且必须是整数ID或以@开头的username"
+                        ) from e
 
                     if not d_actions:
                         raise ValueError("至少需要配置一个动作")

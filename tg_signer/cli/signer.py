@@ -6,6 +6,7 @@ from typing import Optional
 import click
 from click import Context, HelpFormatter
 
+from tg_signer.config import parse_chat_id_or_username
 from tg_signer.core import UserSigner, get_proxy
 from tg_signer.sign_record_store import SignRecordStore
 
@@ -288,7 +289,7 @@ def run_once(obj, task_name, num_of_dialogs):
 @tg_signer.command(help='发送一次文本消息, 请确保当前会话已经"见过"该`chat_id`')
 @click.argument(
     "chat_id",
-    type=int,
+    type=str,
 )
 @click.argument("text")
 @click.option(
@@ -308,6 +309,7 @@ def run_once(obj, task_name, num_of_dialogs):
 @click.pass_obj
 def send_text(obj, chat_id, text, delete_after=None, message_thread_id=None):
     singer = get_signer(None, obj)
+    chat_id = parse_chat_id(chat_id)
     click.echo("将发送单次消息")
     singer.app_run(
         singer.send_text(
@@ -324,7 +326,7 @@ def send_text(obj, chat_id, text, delete_after=None, message_thread_id=None):
 )
 @click.argument(
     "chat_id",
-    type=int,
+    type=str,
 )
 @click.argument("emoji")
 @click.option(
@@ -344,6 +346,7 @@ def send_text(obj, chat_id, text, delete_after=None, message_thread_id=None):
 @click.pass_obj
 def send_dice(obj, chat_id, emoji, delete_after=None, message_thread_id=None):
     singer = get_signer(None, obj)
+    chat_id = parse_chat_id(chat_id)
     click.echo("将发送单次DICE消息")
     singer.app_run(
         singer.send_dice_cli(
@@ -364,11 +367,10 @@ def reconfig(obj, task_name):
 
 
 def parse_chat_id(chat_id: str):
-    chat_id = chat_id.strip()
     if chat_id.startswith("@"):
-        return chat_id[1:]
+        return parse_chat_id_or_username(chat_id)
     try:
-        return int(chat_id)
+        return parse_chat_id_or_username(chat_id)
     except ValueError as e:
         raise click.UsageError("chat_id为username时必须以@开头") from e
 
@@ -460,7 +462,7 @@ def import_(obj, task_name: str, file: str = None):
 @tg_signer.command(help="批量配置Telegram自带的定时发送消息功能")
 @click.argument(
     "chat_id",
-    type=int,
+    type=str,
 )
 @click.argument("text")
 @click.option(
@@ -501,6 +503,7 @@ def schedule_messages(
     obj, chat_id, text, crontab, next_times, random_seconds, message_thread_id
 ):
     signer = get_signer(None, obj)
+    chat_id = parse_chat_id(chat_id)
     signer.app_run(
         signer.schedule_messages(
             chat_id,
@@ -514,13 +517,14 @@ def schedule_messages(
 
 
 @tg_signer.command(help="显示已配置的定时消息")
-@click.argument("chat_id", type=int)
+@click.argument("chat_id", type=str)
 @click.pass_obj
 def list_schedule_messages(obj, chat_id):
     logging.root.setLevel(
         level=logging.WARNING,
     )
     signer = get_signer(None, obj)
+    chat_id = parse_chat_id(chat_id)
     signer.app_run(signer.get_schedule_messages(chat_id))
 
 

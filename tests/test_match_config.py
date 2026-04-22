@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
 from tg_signer.config import MatchConfig
 
@@ -73,7 +74,9 @@ class TestMatchConfig:
     )
     def test_match_text(self, rule, rule_value, text, ignore_case, expected):
         # 构建 MatchConfig 实例
-        config = MatchConfig(rule=rule, rule_value=rule_value, ignore_case=ignore_case)
+        config = MatchConfig(
+            chat_id=123, rule=rule, rule_value=rule_value, ignore_case=ignore_case
+        )
         # 进行匹配测试
         assert config.match_text(text) == expected
 
@@ -133,7 +136,7 @@ class TestMatchConfig:
 
     def test_match_combines_chat_user_and_text(self):
         config = MatchConfig(
-            chat_id="target_chat",
+            chat_id="@target_chat",
             rule="contains",
             rule_value="hello",
             from_user_ids=["@alice"],
@@ -146,6 +149,30 @@ class TestMatchConfig:
         )
 
         assert config.match(message) is True
+
+    def test_match_chat_accepts_at_prefixed_username(self):
+        config = MatchConfig(chat_id="@Target_Chat", rule="all")
+        message = make_message(chat_username="target_chat")
+
+        assert config.match_chat(message.chat) is True
+
+    def test_match_config_rejects_missing_chat_id(self):
+        with pytest.raises(ValidationError):
+            MatchConfig(rule="all")
+
+    def test_match_config_rejects_none_chat_id(self):
+        with pytest.raises(ValidationError):
+            MatchConfig(chat_id=None, rule="all")
+
+    def test_match_config_coerces_numeric_string_chat_id_to_int(self):
+        config = MatchConfig(chat_id="-1001234567890", rule="all")
+
+        assert config.chat_id == -1001234567890
+        assert isinstance(config.chat_id, int)
+
+    def test_match_config_rejects_username_without_at_prefix(self):
+        with pytest.raises(ValidationError):
+            MatchConfig(chat_id="target_chat", rule="all")
 
     def test_match_rejects_self_when_always_ignore_me_enabled(self):
         config = MatchConfig(

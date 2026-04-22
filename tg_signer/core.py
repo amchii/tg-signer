@@ -44,6 +44,7 @@ from pyrogram.types import (
 from tg_signer.config import (
     ActionT,
     BaseJSONConfig,
+    ChatId,
     ChooseOptionByImageAction,
     ClickKeyboardByTextAction,
     HttpCallback,
@@ -56,6 +57,7 @@ from tg_signer.config import (
     SignConfigV3,
     SupportAction,
     UDPForward,
+    parse_chat_id_or_username,
 )
 
 from ._kurigram import SafeGetForumTopics
@@ -140,7 +142,7 @@ _API_MIN_INTERVAL_SECONDS = 0.35
 _API_FLOODWAIT_PADDING_SECONDS = 0.5
 _API_MAX_FLOODWAIT_RETRIES = 2
 
-RouteKey = tuple[int, Optional[int]]
+RouteKey = tuple[ChatId, Optional[int]]
 get_timezone = _get_timezone
 
 
@@ -545,6 +547,7 @@ class BaseUserWorker(Generic[ConfigT]):
         :param chat_id:
         :param text:
         :param delete_after: 秒, 发送消息后进行删除，``None`` 表示不删除, ``0`` 表示立即删除.
+        :param message_thread_id: 群组内话题ID
         :param kwargs:
         :return:
         """
@@ -714,6 +717,7 @@ class UserSignerWorkerContext(BaseModel):
 
     waiter: Waiter
     sign_chats: defaultdict[RouteKey, list[SignChatV3]]  # 签到配置列表
+    resolved_route_keys: dict[RouteKey, RouteKey]
     chat_messages: defaultdict[
         RouteKey,
         Annotated[
@@ -734,6 +738,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         return UserSignerWorkerContext(
             waiter=Waiter(),
             sign_chats=defaultdict(list),
+            resolved_route_keys={},
             chat_messages=defaultdict(dict),
             waiting_message=None,
         )
@@ -744,9 +749,31 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
 
     @staticmethod
     def get_route_key(
-        chat_id: int, message_thread_id: Optional[int] = None
+        chat_id: ChatId, message_thread_id: Optional[int] = None
     ) -> RouteKey:
         return chat_id, message_thread_id
+
+    async def resolve_chat_route_key(self, chat: SignChatV3) -> RouteKey:
+        route_key = self.get_route_key(chat.chat_id, chat.message_thread_id)
+        resolved_route_key = self.context.resolved_route_keys.get(route_key)
+        if resolved_route_key is not None:
+            return resolved_route_key
+        if isinstance(chat.chat_id, int):
+            resolved_route_key = route_key
+        else:
+            resolved_chat = await self._call_telegram_api(
+                "contacts.ResolveUsername",
+                lambda: self.app.get_chat(chat.chat_id),
+            )
+            resolved_route_key = self.get_route_key(
+                resolved_chat.id, chat.message_thread_id
+            )
+        self.context.resolved_route_keys[route_key] = resolved_route_key
+        return resolved_route_key
+
+    def get_runtime_route_key(self, chat: SignChatV3) -> RouteKey:
+        route_key = self.get_route_key(chat.chat_id, chat.message_thread_id)
+        return self.context.resolved_route_keys.get(route_key, route_key)
 
     @property
     def sign_record_file(self):
@@ -811,7 +838,9 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
 
     def ask_one(self) -> SignChatV3:
         input_ = UserInput(numbering_lang="chinese_simple")
-        chat_id = int(input_("Chat ID（登录时最近对话输出中的ID）: "))
+        chat_id = parse_chat_id_or_username(
+            input_("Chat ID（登录时最近对话输出中的ID或@username）: ")
+        )
         name = input_("Chat名称（可选）: ")
         use_message_thread = (
             input_("是否发送到话题（message_thread_id）？(y/N)：").strip().lower()
@@ -985,16 +1014,18 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
 
         async def sign_once():
             for chat in config.chats:
-                route_key = self.get_route_key(chat.chat_id, chat.message_thread_id)
-                self.context.sign_chats[route_key].append(chat)
+                route_key = None
                 try:
+                    route_key = await self.resolve_chat_route_key(chat)
+                    self.context.sign_chats[route_key].append(chat)
                     await self.sign_a_chat(chat)
                 except errors.RPCError as _e:
                     self.log(f"签到失败: {_e} \nchat: \n{chat}")
                     logger.warning(_e, exc_info=True)
                     continue
 
-                self.context.chat_messages[route_key].clear()
+                if route_key is not None:
+                    self.context.chat_messages[route_key].clear()
                 await asyncio.sleep(config.sign_interval)
             self.persist_sign_record(sign_record, str(now.date()), now.isoformat())
 
@@ -1048,7 +1079,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
 
     async def send_text(
         self,
-        chat_id: int,
+        chat_id: Union[int, str],
         text: str,
         delete_after: int = None,
         message_thread_id: Optional[int] = None,
@@ -1183,7 +1214,6 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
         return False
 
     async def wait_for(self, chat: SignChatV3, action: ActionT, timeout=10):
-        route_key = self.get_route_key(chat.chat_id, chat.message_thread_id)
         if isinstance(action, SendTextAction):
             return await self.send_message(
                 chat.chat_id,
@@ -1198,6 +1228,7 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
                 chat.delete_after,
                 message_thread_id=chat.message_thread_id,
             )
+        route_key = self.get_runtime_route_key(chat)
         self.context.waiter.add(route_key)
         start = time.perf_counter()
         last_message = None
