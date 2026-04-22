@@ -6,7 +6,7 @@ import pathlib
 import random
 import time
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from datetime import time as dt_time
 from typing import (
     Annotated,
@@ -21,7 +21,6 @@ from typing import (
     Union,
 )
 from urllib import parse
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from croniter import CroniterBadCronError, croniter
@@ -63,7 +62,8 @@ from ._kurigram import SafeGetForumTopics
 from .ai_tools import AITools, OpenAIConfigManager
 from .notification.server_chan import sc_send
 from .sign_record_store import SignRecordStore
-from .utils import UserInput, print_to_user
+from .utils import UserInput, get_now, print_to_user
+from .utils import get_timezone as _get_timezone
 
 logger = logging.getLogger("tg-signer")
 
@@ -139,10 +139,9 @@ _API_LAST_CALL_AT: dict[str, float] = {}
 _API_MIN_INTERVAL_SECONDS = 0.35
 _API_FLOODWAIT_PADDING_SECONDS = 0.5
 _API_MAX_FLOODWAIT_RETRIES = 2
-DEFAULT_TIMEZONE_NAME = "Asia/Shanghai"
-DEFAULT_TIMEZONE = timezone(timedelta(hours=8), name=DEFAULT_TIMEZONE_NAME)
 
 RouteKey = tuple[int, Optional[int]]
+get_timezone = _get_timezone
 
 
 class Client(SafeGetForumTopics, BaseClient):
@@ -254,60 +253,6 @@ def get_client(
     )
     _CLIENT_INSTANCES[key] = client
     return client
-
-
-def _load_timezone(name: str | None):
-    if not name:
-        return None
-    candidate = name.strip()
-    if not candidate:
-        return None
-    if candidate.startswith(":"):
-        candidate = candidate[1:].strip()
-        if not candidate:
-            return None
-    if candidate.startswith(("/", ".", "~")):
-        tz = _load_timezone_from_file(candidate)
-        if tz is not None:
-            return tz
-    try:
-        return ZoneInfo(candidate)
-    except ZoneInfoNotFoundError:
-        return None
-
-
-def _load_timezone_from_file(path: str | os.PathLike[str] | None):
-    if not path:
-        return None
-    path = pathlib.Path(path).expanduser()
-    if not path.is_file():
-        return None
-    try:
-        with path.open("rb") as fp:
-            return ZoneInfo.from_file(fp)
-    except (OSError, ValueError, ZoneInfoNotFoundError):
-        return None
-
-
-def _get_local_timezone():
-    local_tz = datetime.now().astimezone().tzinfo
-    if local_tz is not None:
-        return local_tz
-    return None
-
-
-def get_timezone():
-    tz = _load_timezone(os.environ.get("TZ"))
-    if tz is not None:
-        return tz
-    tz = _get_local_timezone()
-    if tz is not None:
-        return tz
-    return _load_timezone(DEFAULT_TIMEZONE_NAME) or DEFAULT_TIMEZONE
-
-
-def get_now():
-    return datetime.now(tz=get_timezone())
 
 
 def make_dirs(path: pathlib.Path, exist_ok=True):

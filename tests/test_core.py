@@ -1,10 +1,9 @@
 import asyncio
 import json
 import pathlib
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
 
@@ -111,103 +110,6 @@ def test_get_client_isolated_by_workdir(tmp_path):
 
     assert client1 is not client2
     assert client1.key != client2.key
-
-
-def require_zoneinfo(name: str) -> ZoneInfo:
-    try:
-        return ZoneInfo(name)
-    except ZoneInfoNotFoundError:
-        pytest.skip(f"zoneinfo data for {name} is unavailable in this environment")
-
-
-def get_test_tzfile_source() -> pathlib.Path:
-    for path_str in ("/etc/localtime", "/usr/share/zoneinfo/UTC"):
-        path = pathlib.Path(path_str)
-        if path.is_file():
-            return path
-    pytest.skip("no system tzfile is available for this test")
-
-
-def test_get_timezone_prefers_tz_environment(monkeypatch):
-    import tg_signer.core as core
-
-    expected = require_zoneinfo("America/New_York")
-    monkeypatch.setenv("TZ", "America/New_York")
-    monkeypatch.setattr(core, "_get_local_timezone", lambda: timezone.utc)
-
-    tz = core.get_timezone()
-
-    assert getattr(tz, "key", None) == expected.key
-
-
-def test_get_timezone_supports_posix_prefixed_tz_name(monkeypatch):
-    import tg_signer.core as core
-
-    expected = require_zoneinfo("America/New_York")
-    monkeypatch.setenv("TZ", ":America/New_York")
-    monkeypatch.setattr(core, "_get_local_timezone", lambda: timezone.utc)
-
-    tz = core.get_timezone()
-
-    assert getattr(tz, "key", None) == expected.key
-
-
-def test_get_timezone_supports_tzfile_path_in_tz_environment(monkeypatch, tmp_path):
-    import tg_signer.core as core
-
-    tzfile = tmp_path / "localtime"
-    tzfile.write_bytes(get_test_tzfile_source().read_bytes())
-    expected = core._load_timezone_from_file(tzfile)
-    assert expected is not None
-
-    monkeypatch.setenv("TZ", f":{tzfile}")
-    monkeypatch.setattr(core, "_get_local_timezone", lambda: timezone.utc)
-
-    tz = core.get_timezone()
-    sample = datetime(2026, 4, 14, 12, 0)
-
-    assert sample.replace(tzinfo=tz).utcoffset() == sample.replace(
-        tzinfo=expected
-    ).utcoffset()
-
-
-def test_get_timezone_uses_local_timezone_when_tz_missing(monkeypatch):
-    import tg_signer.core as core
-
-    monkeypatch.delenv("TZ", raising=False)
-    monkeypatch.setattr(core, "_get_local_timezone", lambda: timezone.utc)
-
-    tz = core.get_timezone()
-
-    assert tz is timezone.utc
-
-
-def test_get_timezone_falls_back_to_asia_shanghai(monkeypatch):
-    import tg_signer.core as core
-
-    monkeypatch.delenv("TZ", raising=False)
-    monkeypatch.setattr(core, "_get_local_timezone", lambda: None)
-
-    tz = core.get_timezone()
-    sample = datetime(2026, 1, 1, 12, 0)
-
-    assert sample.replace(tzinfo=tz).utcoffset() == timedelta(hours=8)
-
-
-def test_get_local_timezone_uses_python_local_timezone(monkeypatch):
-    import tg_signer.core as core
-
-    expected = timezone.utc
-
-    class FakeDateTime:
-        @staticmethod
-        def now(tz=None):
-            assert tz is None
-            return SimpleNamespace(astimezone=lambda: SimpleNamespace(tzinfo=expected))
-
-    monkeypatch.setattr(core, "datetime", FakeDateTime)
-
-    assert core._get_local_timezone() is expected
 
 
 @pytest.mark.parametrize(
