@@ -989,12 +989,16 @@ async def test_wait_for_skips_consumed_message_placeholders(signer_factory):
     assert signer.context.chat_messages[route_key][100] is None
 
 
+@pytest.mark.parametrize(
+    "answer", ["8", '"8"', "'8'", "“8”", "‘8’", "`8`", '  " 8 "  ']
+)
 @pytest.mark.asyncio
 async def test_reply_by_calculation_problem_clicks_caption_inline_answer(
     signer_factory,
+    answer,
 ):
     signer = signer_factory()
-    ai_tools = SimpleNamespace(calculate_problem=AsyncMock(return_value="8"))
+    ai_tools = SimpleNamespace(calculate_problem=AsyncMock(return_value=answer))
     signer.get_ai_tools = lambda: ai_tools
     signer.request_callback_answer = AsyncMock(return_value=None)
     signer.send_message = AsyncMock(return_value=None)
@@ -1032,6 +1036,56 @@ async def test_reply_by_calculation_problem_clicks_caption_inline_answer(
         99,
         "answer:8",
     )
+    signer.send_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("answer", "options", "expected"),
+    [
+        ('"28"', ["26", "31", "28", "27"], "28"),
+        ('"28"', ["28", '"28"'], '"28"'),
+        ('"99"', ["26", "31", "28", "27"], None),
+        ('"28', ["26", "31", "28", "27"], None),
+        ("答案是28", ["26", "31", "28", "27"], None),
+    ],
+)
+async def test_reply_by_calculation_problem_matches_quoted_answer(
+    signer_factory, answer, options, expected
+):
+    signer = signer_factory()
+    signer.get_ai_tools = lambda: SimpleNamespace(
+        calculate_problem=AsyncMock(return_value=answer)
+    )
+    signer.request_callback_answer = AsyncMock()
+    signer.send_message = AsyncMock()
+    message = SimpleNamespace(
+        id=99,
+        text="请在60秒内点击正确答案：7 * 4 = ?",
+        chat=SimpleNamespace(id=123),
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(text, callback_data=f"answer:{text}")
+                    for text in row
+                ]
+                for row in [options[:2], options[2:]]
+                if row
+            ]
+        ),
+    )
+
+    ok = await signer._reply_by_calculation_problem(
+        ReplyByCalculationProblemAction(), message
+    )
+
+    assert ok is (expected is not None)
+    if expected is None:
+        signer.request_callback_answer.assert_not_awaited()
+    else:
+        signer.request_callback_answer.assert_awaited_once_with(
+            signer.app, 123, 99, f"answer:{expected}"
+        )
     signer.send_message.assert_not_awaited()
 
 
