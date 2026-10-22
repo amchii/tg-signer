@@ -1348,7 +1348,24 @@ class UserSigner(BaseUserWorker[SignConfigV3]):
             answer = answer.strip()
             self.log(f"回答为: {answer}")
             if option_to_btn:
-                target_btn = option_to_btn.get(_normalize_option_text(answer))
+                normalized_answer = _normalize_option_text(answer)
+                target_btn = option_to_btn.get(normalized_answer)
+                if not target_btn:
+                    # 保留原样匹配的优先级，兼容模型为答案添加成对引号。
+                    for opening, closing in [
+                        ('"', '"'),
+                        ("'", "'"),
+                        ("“", "”"),
+                        ("‘", "’"),
+                        ("`", "`"),
+                    ]:
+                        if (
+                            len(normalized_answer) >= 2
+                            and normalized_answer.startswith(opening)
+                            and normalized_answer.endswith(closing)
+                        ):
+                            target_btn = option_to_btn.get(normalized_answer[1:-1])
+                            break
                 if not target_btn:
                     self.log("未找到匹配的按钮", level="WARNING")
                     return False
