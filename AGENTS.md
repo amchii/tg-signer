@@ -1,151 +1,84 @@
-## Purpose
-This file guides agents/developers collaborating in the `tg-signer` repository. It is meant to keep changes grounded in the current codebase and reduce communication cost and operational mistakes.
+# 仓库协作指南
 
-## Communication And Output
-- By default, adapt to the language used by the person you are communicating with; if they use Chinese, default to Simplified Chinese.
-- State the conclusion first, then provide the key basis and execution/verification status.
-- Only expand into long explanations when necessary; avoid restating the code.
-- Default response structure:
-  - What was done
-  - What the result is
-  - What was not executed and why
-  - Optional next steps
+## 交流与工作方式
 
-## Current Code Facts
-- Project type: Python 3.10+ CLI tool. The entry command is `tg-signer = tg_signer.__main__:signer`.
-- The main capabilities are split into 4 parts:
-  - Check-in: `UserSigner` in `tg_signer/core.py`
-  - Automation rule engine: `tg_signer/automation/`
-  - Monitoring: `UserMonitor` in `tg_signer/core.py` + `tg_signer/cli/monitor.py`
-  - Optional WebUI: `tg_signer/webui/`
-- For new automation-related features, prefer implementing them in the `automation` subsystem first. `monitor` is still kept and exposed through the CLI/WebUI, but it is no longer the preferred place for new capabilities.
-- The primary storage for check-in records is now SQLite: `<workdir>/data.sqlite3`. `sign_record.json` is only kept for compatibility reads/migration and is no longer the primary write target.
-- Automation configs support `config.json`, `config.yaml`, and `config.yml`. Resolution order is JSON first, then YAML. YAML requires `pyyaml`.
-- LLM configuration supports two sources:
-  - Environment variables: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`
-  - Workdir file: `<workdir>/.openai_config.json`
-- The current default model in code is `gpt-4o` (see `tg_signer/ai_tools.py`).
-- The current WebUI manages signer/monitor configs and check-in records; it is not an automation config editor.
+- 默认根据沟通对象使用的语言进行交流和解释改动；对方明确指定语言时，遵循其要求。新增文档沿用目标文档或项目的语言约定，代码标识符沿用项目现有命名风格。
+- 修改前先阅读相关实现、测试和文档，优先沿用现有结构，保持改动聚焦。
+- 保留用户已有的修改，不擅自重置工作区、回滚无关文件或执行提交、推送、发布。
+- 完成后简要说明改动内容、验证结果，以及尚未验证的部分。
 
-## Key Directories
-- `tg_signer/cli/`: CLI command definitions. The main entry is in `signer.py`; automation and monitor subcommands are in `automation.py` and `monitor.py`.
-- `tg_signer/core.py`: `BaseUserWorker`, `UserSigner`, `UserMonitor`, Telegram API wrappers, rate limiting, and FloodWait retry handling.
-- `tg_signer/config.py`: Pydantic config models and backward-compatibility migration logic for check-in, monitoring, and automation.
-- `tg_signer/sign_record_store.py`: SQLite check-in record storage, schema migration, and legacy JSON migration.
-- `tg_signer/automation/engine.py`: Automation executor `UserAutomation`.
-- `tg_signer/automation/handlers.py`: Built-in handlers, template rendering, and plugin loading.
-- `tg_signer/automation/models.py`: `Event`, `AutomationContext`, and `RuleStateStore`.
-- `tg_signer/ai_tools.py`: OpenAI configuration and image/text capability wrappers.
-- `tg_signer/webui/`: NiceGUI WebUI; data read/write logic is mainly in `webui/data.py`.
-- `docs/automation_usage.md`: Automation usage documentation.
-- `docs/automation_design.md`: Internal automation design documentation.
-- `tests/`: pytest test suite; there is already coverage for CLI, automation, check-in record migration, and message thread id behavior.
+## 项目概况
 
-## Local Environment Conventions (Must Follow)
-- Always prefer the repository virtual environment (`.venv` or `venv`). Do not use the system Python directly.
-- Recommended first steps:
-  - `source .venv/bin/activate`
-  - `python -m pip install -e .`
-- Development dependencies are currently defined in `[dependency-groups].dev` in `pyproject.toml`; they are not an optional extra. Do not keep writing this as `.[dev]`.
-- If you need to complete the dev tooling set, make sure at least these are installed: `ruff`, `pytest`, `pytest-asyncio`, `tox`.
-- Optional capability dependencies:
-  - WebUI: `python -m pip install -e ".[gui]"`
-  - YAML: `python -m pip install -e ".[yaml]"`
-  - Speedup: `python -m pip install -e ".[speedup]"`
+`tg-signer` 是 Telegram 自动化工具，提供定时签到、消息监控、转发、自动回复、规则引擎和可选 WebUI。
 
-## Common Commands
-- Basic:
-  - `tg-signer --help`
-  - `tg-signer version`
-  - `tg-signer login`
-  - `tg-signer logout`
-- Check-in:
-  - `tg-signer list`
-  - `tg-signer run <task_name>`
-  - `tg-signer run-once <task_name>`
-  - `tg-signer reconfig <task_name>`
-  - `tg-signer export <task_name>`
-  - `tg-signer import <task_name>`
-- Messages and topics:
-  - `tg-signer send-text ...`
-  - `tg-signer send-dice ...`
-  - `tg-signer list-members --chat_id ...`
-  - `tg-signer list-topics --chat_id ...`
-  - `tg-signer schedule-messages ...`
-  - `tg-signer list-schedule-messages <chat_id>`
-- Automation:
-  - `tg-signer automation list`
-  - `tg-signer automation init <task_name>`
-  - `tg-signer automation validate <task_name>`
-  - `tg-signer automation run <task_name>`
-  - `tg-signer automation export <task_name>`
-  - `tg-signer automation import <task_name>`
-  - `tg-signer automation reconfig <task_name>`
-- Records and utilities:
-  - `tg-signer list-sign-records [task_name]`
-  - `tg-signer migrate-sign-records`
-  - `tg-signer multi-run -a account_a -a account_b <task_name>`
-  - `tg-signer llm-config`
-  - `tg-signer webgui`
+- Python 最低版本为 3.10；持续集成覆盖 3.10、3.11、3.12，新增代码需保持兼容。
+- 命令行使用 Click，配置使用 Pydantic，Telegram 客户端依赖 Kurigram，但导入名仍为 `pyrogram`。
+- WebUI 使用 NiceGUI，属于可选依赖；基础命令行功能应能在未安装 GUI 依赖时使用。
+- 依赖和工具配置以 `pyproject.toml` 为准，测试矩阵见 `tox.ini` 和 `.github/workflows/test.yml`。
 
-## Config And State Paths
-- The default CLI workdir is `.signer`, overridable via the global `--workdir`.
-- Check-in config: `<workdir>/signs/<task>/config.json`
-- Automation config: `<workdir>/automations/<task>/config.json|yaml|yml`
-- Automation state: `<workdir>/automations/<task>/state.json`
-- Monitor config: `<workdir>/monitors/<task>/config.json`
-- Automation plugins: `<workdir>/handlers/*.py`
-- User cache:
-  - `<workdir>/users/<user_id>/me.json`
-  - `<workdir>/users/<user_id>/latest_chats.json`
-- Primary check-in record database: `<workdir>/data.sqlite3`
-- Local OpenAI config: `<workdir>/.openai_config.json`
-- Compatible legacy check-in record layouts:
-  - `<workdir>/signs/<task>/<user_id>/sign_record.json`
-  - `<workdir>/signs/<task>/sign_record.json`
+## 主要目录与文件
 
-## Development Constraints
-- Follow the Ruff configuration for code style:
-  - `line-length = 88`
-  - Additional enabled lint rules: `I`, `B`, `W`, `C4`
-- Before submitting, run at least:
-  - `python -m ruff check .`
-  - `python -m ruff format .`
-  - `python -m pytest -vv tests/`
-- Run `tox` for cross-Python validation when needed (`py310`, `py311`, `py312`).
+| 路径 | 职责 |
+| --- | --- |
+| `tg_signer/__main__.py` | `tg-signer` 命令入口 |
+| `tg_signer/cli/` | 签到、监控、自动化等命令行接口 |
+| `tg_signer/core.py` | 客户端管理、签到和监控核心逻辑 |
+| `tg_signer/config.py` | 配置模型、校验及版本转换 |
+| `tg_signer/automation/` | 自动化模型、规则引擎和处理器 |
+| `tg_signer/sign_record_store.py` | 签到记录存储 |
+| `tg_signer/_kurigram/` | Kurigram 扩展及兼容补丁 |
+| `tg_signer/ai_tools.py` | 大模型调用相关逻辑 |
+| `tg_signer/webui/` | WebUI 页面、交互及数据处理 |
+| `tg_signer/notification/` | 通知渠道 |
+| `tests/` | 自动化测试及离线 Telegram 测试设施 |
+| `docs/` | 自动化规则设计与使用说明 |
+| `docker/` | 镜像构建、部署配置及说明 |
+| `README.md`、`README_EN.md` | 中文和英文使用说明 |
 
-## Change Strategy
-- Automation first: new rule-driven capabilities should go into `tg_signer/automation/`. Do not keep expanding the responsibility surface of `monitor`.
-- Preserve compatibility: when changing config models, keep the `BaseJSONConfig.load()` compatibility chain working, especially the migration logic for `SignConfigV1/V2/V3`.
-- SQLite is the source of truth for record storage: when changing check-in record logic, prefer extending `SignRecordStore` and schema migration rather than making JSON the primary storage again.
-- Telegram API calls must reuse existing wrappers: prefer `BaseUserWorker._call_telegram_api()`, `get_client()`, and `get_proxy()`. Do not bypass the unified rate limiting and FloodWait handling.
-- Be aware of the existing CLI compatibility surface:
-  - `chat_id` supports both integers and `@username`
-  - Multiple commands support `message_thread_id`
-  - `run_once` / `send_text` have alias compatibility
-- Confirm WebUI scope before changing it: `webui/data.py` currently only handles `signer` / `monitor` configs and check-in records. Do not assume it already covers `automation`.
+## 环境与常用命令
 
-## Security And Privacy
-- Never commit any sessions or sensitive information, for example:
-  - `*.session`
-  - `*.session_string`
-  - `.env`
-  - `<workdir>/.openai_config.json`
-  - Real account credentials and sensitive log contents
-- For LLM-related capabilities, prefer injecting configuration through environment variables or `tg-signer llm-config`. Do not hardcode secrets in code.
+执行 Python 命令前，优先检查并使用仓库中的 `.venv` 或 `venv`，不要直接使用系统 Python。以下示例采用 `.venv`，若实际使用 `venv`，相应替换路径。
 
-## Documentation And Test Synchronization
-- When CLI parameters, capability boundaries, directory structure, or config formats change, at minimum check and update:
-  - `README.md`
-  - `README_EN.md` (if the change is user-facing)
-  - `docs/automation_usage.md` (if automation is involved)
-  - `docs/automation_design.md` (if internal automation mechanics are involved)
-  - The corresponding tests in `tests/`
-- When adding or fixing CLI behavior, prefer adding/updating existing CLI tests first. For check-in records and migration changes, prefer adding/updating `sign_record_store` / CLI migration tests first.
+使用 uv 初始化或同步开发环境：
 
-## User Collaboration Requirements
-- Unless otherwise specified, default to adapting to the language used by the person you are communicating with; if they use Chinese, default to Simplified Chinese.
-- When external dependencies are involved (Telegram, OpenAI, NiceGUI, YAML, third-party notifications, etc.), you must clearly state:
-  - Whether it is actually integrated right now
-  - The runtime prerequisites
-  - Which parts are mocks, placeholders, or only locally verifiable
+```sh
+uv sync --group dev
+# 需要开发 WebUI 或 YAML 配置功能时，按需安装可选依赖
+uv sync --group dev --extra gui --extra yaml
+```
+
+常用检查命令：
+
+```sh
+# 静态检查
+.venv/bin/python -m ruff check
+# 格式检查；修改格式时仅对涉及的文件运行 ruff format
+.venv/bin/python -m ruff format --check tg_signer/ tests/
+# 完整测试，与持续集成的测试目录和警告过滤保持一致
+.venv/bin/python -m pytest -W=ignore::DeprecationWarning:pyrogram.sync -vv tests/
+# 针对性测试示例
+.venv/bin/python -m pytest tests/test_automation_engine.py
+```
+
+按改动范围选择检查：纯文档修改核对内容和命令即可；代码修改先运行相关测试，涉及公共接口、配置迁移或客户端生命周期时运行完整测试。不要顺带格式化无关文件。
+
+## 实现约定
+
+- 保持实现简单直接，不要过度防御；依据明确需求和实际代码行为做设计，不凭假设增加业务限制、额外校验或复杂兜底。
+- 使用四空格缩进，遵循现有类型注解和异步代码风格；Ruff 行宽配置为 88，具体检查规则以项目配置为准。
+- 调整命令行参数时，检查 Click 定义、对应测试、帮助文本及文档示例，保留已有别名和兼容行为。
+- 调整配置模型时，检查历史配置转换、默认值、序列化和 WebUI 的相关处理，避免破坏已有配置。
+- 修改客户端或异步逻辑时，关注事件循环、客户端复用、锁、引用计数和资源释放，复用现有管理方式。
+- 修改签到记录存储或迁移时，保持历史数据可读，并为迁移边界和重复执行行为提供验证。
+- 新增自动化规则或处理器时，同时检查模型定义、处理器注册、引擎执行及对应使用说明。
+- 修改公开用法时同步维护中英文 README；自动化功能的详细说明位于 `docs/automation_usage.md`。
+- 仅在任务需要时修改依赖、版本号、发布配置或兼容补丁。
+
+## 测试与本地数据
+
+- 测试放在 `tests/` 下，沿用 `test_*.py` 命名；异步测试使用 pytest-asyncio。
+- 优先复用 `tests/conftest.py` 中的 `signer_factory`、`telegram_server` 和 `tests/telegram.py` 中的测试对象，在临时目录中读写数据。
+- Telegram 相关测试应使用离线设施或模拟网络边界；常规验证不应登录真实账号、发送真实消息或启动长期任务。
+- 根目录的 `_test*.py` 属于本地脚本，不作为标准测试入口，不在未检查内容时批量执行。
+- `.env`、`*.session`、`*.session_string`、`.signer/`、`.monitor/`、日志及本地数据库可能包含凭据或真实运行数据。不要为了了解项目而读取、输出、覆盖或提交这些内容；任务确需处理时限制范围，并对展示内容脱敏。
+- 不修改虚拟环境、缓存、`*.egg-info/` 等生成内容来实现功能；应修改对应源码或配置。
