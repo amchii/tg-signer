@@ -7,7 +7,7 @@ import click
 from click import Context, HelpFormatter
 
 from tg_signer.config import parse_chat_id_or_username
-from tg_signer.core import ChatFolderError, UserSigner, get_proxy
+from tg_signer.core import ChatFolderError, UserSigner, get_event_loop, get_proxy
 from tg_signer.sign_record_store import SignRecordStore
 
 
@@ -75,9 +75,19 @@ def run_worker(worker, coroutine):
         raise click.ClickException(str(exc)) from exc
 
 
-def run_coroutines(loop, coroutines):
+def run_signers(tasks, num_of_dialogs, folder):
+    loop = get_event_loop()
+
+    async def run_tasks():
+        signers = [
+            get_signer(task_name, ctx_obj, loop=loop) for task_name, ctx_obj in tasks
+        ]
+        await asyncio.gather(
+            *(signer.run(num_of_dialogs, folder=folder) for signer in signers)
+        )
+
     try:
-        loop.run_until_complete(asyncio.gather(*coroutines))
+        loop.run_until_complete(run_tasks())
     except ChatFolderError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -293,13 +303,7 @@ def logout(obj):
 def run(obj, task_names, num_of_dialogs, folder):
     if len(task_names) < 1:
         raise click.UsageError("At least one task name is required")
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    coros = []
-    for task_name in task_names:
-        signer = get_signer(task_name, obj, loop=loop)
-        coros.append(signer.run(num_of_dialogs, folder=folder))
-    run_coroutines(loop, coros)
+    run_signers(((task_name, obj) for task_name in task_names), num_of_dialogs, folder)
 
 
 @tg_signer.command(help="运行一次签到任务，即使该签到任务今日已执行过")
@@ -585,14 +589,8 @@ def list_schedule_messages(obj, chat_id):
 def multi_run(obj, accounts, task_name, num_of_dialogs, folder):
     logger = logging.getLogger("tg-signer")
     logger.info(f"开始使用一套配置({task_name})同时运行多个账号..")
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    coros = []
-    for account in accounts:
-        obj["account"] = account
-        signer = get_signer(task_name, obj, loop=loop)
-        coros.append(signer.run(num_of_dialogs, folder=folder))
-    run_coroutines(loop, coros)
+    tasks = ((task_name, {**obj, "account": account}) for account in accounts)
+    run_signers(tasks, num_of_dialogs, folder)
 
 
 @tg_signer.command(name="llm-config", help="配置大模型API")

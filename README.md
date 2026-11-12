@@ -150,6 +150,8 @@ tg-signer automation run my_auto
 
 `tg-signer`不读取系统代理，可以使用环境变量 `TG_PROXY`或命令参数`--proxy`进行配置
 
+省略端口时，SOCKS4/5 默认使用 `1080`，HTTP 默认使用 `8080`。
+
 例如：
 
 ```sh

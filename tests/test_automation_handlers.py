@@ -1,8 +1,9 @@
 import logging
 from datetime import datetime, timezone
-from types import SimpleNamespace
 
 import pytest
+from pyrogram import raw
+from pyrogram.types import Message
 
 from tg_signer.automation.handlers import (
     ai_reply,
@@ -40,16 +41,6 @@ class DummyAITools:
         return "AI-RESP"
 
 
-class DummyClient:
-    def __init__(self, history_messages):
-        self.history_messages = history_messages
-
-    async def get_chat_history(self, chat_id, limit):
-        _ = chat_id
-        for message in self.history_messages[:limit]:
-            yield message
-
-
 @pytest.mark.asyncio
 async def test_extract_regex_sets_var(tmp_path):
     """extract_regex 应将捕获结果写入 ctx.vars。"""
@@ -58,7 +49,7 @@ async def test_extract_regex_sets_var(tmp_path):
     event = Event(
         type="message",
         chat_id=123,
-        message=SimpleNamespace(text="cooldown 42"),
+        message=Message(id=1, text="cooldown 42"),
         now=datetime(2024, 1, 1, tzinfo=timezone.utc),
         trigger_id="t1",
         rule_id="r1",
@@ -145,7 +136,7 @@ async def test_random_pick_sets_var(tmp_path):
     event = Event(
         type="message",
         chat_id=1,
-        message=SimpleNamespace(text="hi"),
+        message=Message(id=1, text="hi"),
         now=datetime(2024, 1, 1, tzinfo=timezone.utc),
         trigger_id="t1",
         rule_id="r1",
@@ -170,7 +161,7 @@ async def test_blacklist_filter_source_var(tmp_path):
     event = Event(
         type="message",
         chat_id=1,
-        message=SimpleNamespace(text="safe text"),
+        message=Message(id=1, text="safe text"),
         now=datetime(2024, 1, 1, tzinfo=timezone.utc),
         trigger_id="t1",
         rule_id="r1",
@@ -193,32 +184,45 @@ async def test_blacklist_filter_source_var(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_ai_reply_uses_recent_messages(tmp_path):
+async def test_ai_reply_uses_recent_messages(
+    tmp_path, signer_factory, telegram_server, monkeypatch
+):
     """ai_reply 可按 recent_limit 读取历史消息作为输入。"""
     state = RuleStateStore(tmp_path / "state.json", logging.getLogger("test"))
-    worker = DummyWorker()
+    worker = signer_factory(session_string=telegram_server.session_string)
+    ai_tools = DummyAITools()
+    monkeypatch.setattr(worker, "get_ai_tools", lambda: ai_tools)
     history = [
-        SimpleNamespace(
+        telegram_server.message(
+            id=2,
             text="最新消息",
-            caption=None,
-            from_user=SimpleNamespace(
-                username="neo", first_name=None, last_name=None, id=1
-            ),
-            sender_chat=None,
+            from_id=raw.types.PeerUser(user_id=1),
         ),
-        SimpleNamespace(
+        telegram_server.message(
+            id=1,
             text="更早消息",
-            caption=None,
-            from_user=SimpleNamespace(
-                username="trinity", first_name=None, last_name=None, id=2
-            ),
-            sender_chat=None,
+            from_id=raw.types.PeerUser(user_id=2),
         ),
     ]
+    telegram_server.responses[raw.functions.messages.GetHistory] = (
+        raw.types.messages.Messages(
+            messages=history,
+            topics=[],
+            chats=[telegram_server.channel],
+            users=[
+                raw.types.User(id=1, first_name="Neo", username="neo"),
+                raw.types.User(id=2, first_name="Trinity", username="trinity"),
+            ],
+        )
+    )
+    telegram_server.responses[raw.functions.messages.SendMessage] = lambda query: (
+        telegram_server.updates(telegram_server.message(text=query.message))
+    )
+    await worker.login(num_of_dialogs=1, print_chat=False)
     event = Event(
         type="message",
-        chat_id=123,
-        message=SimpleNamespace(text="当前消息", id=99),
+        chat_id=-1000000000005,
+        message=Message(text="当前消息", id=99),
         now=datetime(2024, 1, 1, tzinfo=timezone.utc),
         trigger_id="t1",
         rule_id="r1",
@@ -226,24 +230,25 @@ async def test_ai_reply_uses_recent_messages(tmp_path):
     ctx = AutomationContext(
         vars={},
         state=state,
-        client=DummyClient(history),
+        client=worker.app,
         logger=logging.getLogger("test"),
         worker=worker,
         workdir=tmp_path,
     )
 
-    result = await ai_reply(
-        event,
-        ctx,
-        {
-            "prompt": "你是测试助手",
-            "recent_limit": 2,
-            "store_var": "ai_text",
-        },
-    )
+    async with worker.app:
+        result = await ai_reply(
+            event,
+            ctx,
+            {
+                "prompt": "你是测试助手",
+                "recent_limit": 2,
+                "store_var": "ai_text",
+            },
+        )
     assert result == "continue"
     assert ctx.vars["ai_text"] == "AI-RESP"
-    _, query = worker.ai_tools.calls[0]
+    _, query = ai_tools.calls[0]
     assert "[@trinity] 更早消息" in query
     assert "[@neo] 最新消息" in query
 

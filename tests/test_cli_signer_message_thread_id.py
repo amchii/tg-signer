@@ -10,9 +10,8 @@ class DummySigner:
     def __init__(self):
         self.calls = []
 
-    def app_run(self, coroutine=None):
-        if coroutine is not None:
-            asyncio.run(coroutine)
+    def app_run(self, coroutine):
+        asyncio.run(coroutine)
 
     async def send_text(
         self, chat_id, text, delete_after=None, message_thread_id=None, **kwargs

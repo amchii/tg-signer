@@ -1,15 +1,14 @@
 import asyncio
 import contextlib
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
+from pyrogram.enums import ChatType
+from pyrogram.types import Chat, Message, User
 
 from tg_signer.automation.engine import UserAutomation
 from tg_signer.automation.handlers import register_builtin_handlers
-from tg_signer.automation.models import RuleStateStore
 from tg_signer.config import (
     AutomationConfig,
     FilterConfig,
@@ -20,65 +19,20 @@ from tg_signer.config import (
 )
 
 
-class AutomationHarness(UserAutomation):
-    """测试专用实例，避免触发真实 client 初始化与网络依赖。"""
-
-    def __init__(self, tmp_path):
-        import logging
-        from collections import OrderedDict, defaultdict
-
-        self.task_name = "t"
-        self._account = "test_account"
-        self._workdir = tmp_path
-        self._tasks_dir = "automations"
-        self.logger = logging.getLogger("tg-signer")
-        _ = self.task_dir  # 触发目录创建
-        self.state = RuleStateStore(self.task_dir / "state.json", self.logger)
-        self._tick_seconds = 1.0
-        self._message_cache = defaultdict(OrderedDict)
-        self._message_cache_limit = 200
-        self.app = SimpleNamespace(forward_messages=lambda *args, **kwargs: None)
-
-
-@dataclass
-class DummyUser:
-    """Message.from_user 的最小替身。"""
-
-    id: int
-    username: str | None = None
-    is_self: bool = False
-
-
-@dataclass
-class DummyChat:
-    """Message.chat 的最小替身。"""
-
-    id: int
-    username: str | None = None
-
-
-@dataclass
-class DummyMessage:
-    """Message 的最小替身，用于触发/过滤逻辑测试。"""
-
-    text: str | None
-    chat: DummyChat
-    id: int = 0
-    from_user: DummyUser | None = None
-    caption: str | None = None
-    reply_to_message: "DummyMessage | None" = None
-
-
 def make_worker(tmp_path):
-    """构造 UserAutomation 的测试替身。"""
-    return AutomationHarness(tmp_path)
+    return UserAutomation(
+        task_name="t",
+        account="test_account",
+        workdir=tmp_path,
+        session_dir=tmp_path,
+    )
 
 
 def test_match_filter_variants(tmp_path):
     worker = make_worker(tmp_path)
-    chat = DummyChat(id=1, username="room")
-    user = DummyUser(id=2, username="Neo", is_self=False)
-    msg = DummyMessage(text="Hello World", chat=chat, from_user=user)
+    chat = Chat(type=ChatType.GROUP, id=1, username="room")
+    user = User(id=2, username="Neo", is_self=False)
+    msg = Message(id=1, text="Hello World", chat=chat, from_user=user)
 
     assert worker._match_filter(
         FilterConfig(text_rule="contains", text_value="world", ignore_case=True),
@@ -104,11 +58,11 @@ def test_match_filter_variants(tmp_path):
 
 def test_match_message_trigger_and_user(tmp_path):
     worker = make_worker(tmp_path)
-    chat = DummyChat(id=1, username="room")
-    me = DummyUser(id=99, username="me", is_self=True)
-    other = DummyUser(id=2, username="neo", is_self=False)
-    replied = DummyMessage(text="hi", chat=chat, from_user=me)
-    msg = DummyMessage(text="ok", chat=chat, from_user=other, reply_to_message=replied)
+    chat = Chat(type=ChatType.GROUP, id=1, username="room")
+    me = User(id=99, username="me", is_self=True)
+    other = User(id=2, username="neo", is_self=False)
+    replied = Message(id=1, text="hi", chat=chat, from_user=me)
+    msg = Message(id=1, text="ok", chat=chat, from_user=other, reply_to_message=replied)
 
     trigger = MessageTriggerConfig(
         type="message", params={"chat_id": 1, "reply_to_me": True}
@@ -124,8 +78,8 @@ def test_match_message_trigger_and_user(tmp_path):
 
 def test_match_chat_ids_and_username(tmp_path):
     worker = make_worker(tmp_path)
-    chat = DummyChat(id=1, username="room")
-    msg = DummyMessage(text="ok", chat=chat)
+    chat = Chat(type=ChatType.GROUP, id=1, username="room")
+    msg = Message(id=1, text="ok", chat=chat)
 
     assert worker._match_chat(msg, 1, None)
     assert worker._match_chat(msg, "@room", None)
@@ -147,7 +101,7 @@ def test_compute_next_run_interval_and_cron(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_timer_schedule_next_override(tmp_path):
+async def test_timer_schedule_next_override(tmp_path, monkeypatch):
     """验证 timer 触发后 schedule_next 能覆盖默认间隔计算。"""
     worker = make_worker(tmp_path)
     register_builtin_handlers()
@@ -180,7 +134,7 @@ async def test_timer_schedule_next_override(tmp_path):
     import tg_signer.automation.engine as engine
 
     # 固定当前时间，避免定时循环受真实时间影响
-    engine.get_now = lambda: now
+    monkeypatch.setattr(engine, "get_now", lambda: now)
 
     # 运行一次 timer_loop 周期后取消，模拟单轮触发
     task = asyncio.create_task(worker.timer_loop())
@@ -213,7 +167,9 @@ async def test_on_edited_message_matches_message_trigger(tmp_path):
         events.append((rule.id, event.type, event.chat_id))
 
     worker._run_rule = fake_run_rule  # type: ignore[method-assign]
-    msg = DummyMessage(text="edited", chat=DummyChat(id=1, username="room"))
+    msg = Message(
+        id=1, text="edited", chat=Chat(type=ChatType.GROUP, id=1, username="room")
+    )
 
     await worker.on_edited_message(None, msg)
 
@@ -226,10 +182,12 @@ async def test_on_edited_message_updates_cache(tmp_path):
     worker = make_worker(tmp_path)
     worker.config = AutomationConfig(rules=[])
 
-    original = DummyMessage(
-        id=100, text="before", chat=DummyChat(id=1, username="room")
+    original = Message(
+        id=100, text="before", chat=Chat(type=ChatType.GROUP, id=1, username="room")
     )
-    edited = DummyMessage(id=100, text="after", chat=DummyChat(id=1, username="room"))
+    edited = Message(
+        id=100, text="after", chat=Chat(type=ChatType.GROUP, id=1, username="room")
+    )
 
     await worker.on_message(None, original)
     await worker.on_edited_message(None, edited)

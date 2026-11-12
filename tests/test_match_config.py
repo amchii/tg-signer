@@ -1,7 +1,7 @@
-from types import SimpleNamespace
-
 import pytest
 from pydantic import ValidationError
+from pyrogram.enums import ChatType
+from pyrogram.types import Chat, Message, User
 
 from tg_signer.config import MatchConfig
 
@@ -15,11 +15,12 @@ def make_message(
 ):
     user = None
     if from_user is not None:
-        defaults = {"id": None, "username": None, "is_self": False}
+        defaults = {"id": 456, "username": None, "is_self": False}
         defaults.update(from_user)
-        user = SimpleNamespace(**defaults)
-    return SimpleNamespace(
-        chat=SimpleNamespace(id=chat_id, username=chat_username),
+        user = User(**defaults)
+    return Message(
+        id=1,
+        chat=Chat(id=chat_id, type=ChatType.PRIVATE, username=chat_username),
         text=text,
         from_user=user,
     )

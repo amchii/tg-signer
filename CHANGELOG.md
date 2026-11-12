@@ -2,6 +2,13 @@
 
 ## 版本变动日志
 
+### 未发布
+
+- 固定依赖 `kurigram==2.2.27`，适配新版事件循环接口，修复登录和任务启动失败的问题（#145）
+- 使用 `ForumTopic.name` 输出话题名称，修复登录和查询话题时的字段访问错误
+- 修复登出时客户端尚未初始化导致会话无法清理的问题
+- 保留省略端口的代理配置，SOCKS4/5 默认使用 `1080`，HTTP 默认使用 `8080`
+
 ### 0.9.0
 - 新增 `list-folders` 和 `--from-folder`，支持从 Telegram 普通对话 Folder 加载手动添加的对话
 - 兼容 Kurigram 同步与异步论坛话题解析接口
@@ -101,6 +108,13 @@
 - 调用 AI 识别图片点击键盘
 
 ## Changelog
+
+### Unreleased
+
+- Pin `kurigram==2.2.27` and adapt to its event loop changes to fix login and task startup failures (#145).
+- Read topic names from `ForumTopic.name` to fix topic output during login and topic queries.
+- Initialize the connected client before logout so session cleanup can complete.
+- Preserve proxy URLs without an explicit port by defaulting SOCKS4/5 to `1080` and HTTP to `8080`.
 
 ### 0.9.0
 - Add `list-folders` and `--from-folder` to load manually added chats from regular Telegram folders

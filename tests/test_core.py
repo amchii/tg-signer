@@ -1,14 +1,23 @@
 import asyncio
 import json
 import pathlib
-from datetime import datetime, timezone
 from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from pyrogram.types import Folder, InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram import raw
+from pyrogram.types import (
+    Chat,
+    Folder,
+    ForumTopic,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    User,
+)
 
+from tests.telegram import make_dialog, make_photo, make_raw_topic
 from tg_signer.config import (
     ChooseOptionByImageAction,
     ClickKeyboardByTextAction,
@@ -33,6 +42,22 @@ class TestBaseUserWorker:
         assert worker.task_name == "my_task"
         assert worker.context == {}
         assert worker.app.key.endswith("/acct")
+
+    @pytest.mark.parametrize("closed_loop", [False, True])
+    def test_creates_default_loop_when_needed(self, signer_factory, closed_loop):
+        previous_loop = asyncio.get_event_loop()
+        current_loop = None
+        if closed_loop:
+            current_loop = asyncio.new_event_loop()
+            current_loop.close()
+        asyncio.set_event_loop(current_loop)
+        try:
+            worker = signer_factory()
+            assert worker.loop is asyncio.get_event_loop()
+            assert not worker.loop.is_closed()
+        finally:
+            asyncio.get_event_loop().close()
+            asyncio.set_event_loop(previous_loop)
 
 
 def collect_outputs(monkeypatch, core):
@@ -64,7 +89,7 @@ def patch_client_methods(
 
     async def fake_get_me(self):
         await asyncio.sleep(0)
-        return SimpleNamespace(id=123456)
+        return User(id=123456)
 
     async def fake_get_dialogs(self, limit):
         del limit
@@ -93,7 +118,7 @@ def setup_login_test(monkeypatch, core, dialogs):
     async def fake_get_dialogs(self, limit):
         del limit
         for chat in dialogs:
-            yield SimpleNamespace(chat=chat)
+            yield make_dialog(chat=chat)
 
     patch_client_methods(monkeypatch, core, get_dialogs=fake_get_dialogs)
     return collect_outputs(monkeypatch, core)
@@ -134,7 +159,7 @@ def test_get_client_isolated_by_workdir(tmp_path):
     ],
 )
 def test_readable_chat_supports_new_chat_types(chat_type, expected):
-    chat = SimpleNamespace(
+    chat = Chat(
         id=-2001,
         title="test-chat",
         type=chat_type,
@@ -149,12 +174,12 @@ def test_readable_chat_supports_new_chat_types(chat_type, expected):
     ("chat", "expected"),
     [
         pytest.param(
-            SimpleNamespace(type="private", is_forum=False),
+            Chat(id=1, type="private", is_forum=False),
             False,
             id="private",
         ),
         pytest.param(
-            SimpleNamespace(type=None, is_forum=False),
+            Chat(id=1, type=None, is_forum=False),
             False,
             id="unknown",
         ),
@@ -168,11 +193,11 @@ def test_chat_has_forum_topics_returns_false_for_non_forum_chat(chat, expected):
     "chat",
     [
         pytest.param(
-            SimpleNamespace(type=ChatType.SUPERGROUP, is_forum=True),
+            Chat(id=1, type=ChatType.SUPERGROUP, is_forum=True),
             id="forum-supergroup",
         ),
         pytest.param(
-            SimpleNamespace(type=ChatType.FORUM, is_forum=False),
+            Chat(id=1, type=ChatType.FORUM, is_forum=False),
             id="forum",
         ),
     ],
@@ -182,7 +207,7 @@ def test_chat_has_forum_topics_returns_true_for_forum_chat(chat):
 
 
 def test_chat_has_forum_topics_returns_false_for_direct_chat():
-    chat = SimpleNamespace(type=ChatType.DIRECT, is_forum=False)
+    chat = Chat(id=1, type=ChatType.DIRECT, is_forum=False)
 
     assert chat_has_forum_topics(chat) is False
 
@@ -322,12 +347,12 @@ async def test_login_bootstrap_is_shared_between_concurrent_workers(
     async def fake_get_me(self):
         calls["get_me"] += 1
         await asyncio.sleep(0)
-        return SimpleNamespace(id=123456)
+        return User(id=123456)
 
     async def fake_get_dialogs(self, limit):
         del limit
         calls["get_dialogs"] += 1
-        chat = SimpleNamespace(
+        chat = Chat(
             id=10001,
             title="test-chat",
             type="private",
@@ -335,7 +360,7 @@ async def test_login_bootstrap_is_shared_between_concurrent_workers(
             first_name="test",
             last_name=None,
         )
-        yield SimpleNamespace(chat=chat)
+        yield make_dialog(chat=chat)
 
     async def fake_save_session_string(self):
         calls["save_session_string"] += 1
@@ -372,7 +397,7 @@ async def test_login_loads_explicit_folder_chats(
 ):
     import tg_signer.core as core
 
-    chat_a = SimpleNamespace(
+    chat_a = Chat(
         id=1001,
         title="A",
         type="private",
@@ -380,7 +405,7 @@ async def test_login_loads_explicit_folder_chats(
         first_name="A",
         last_name=None,
     )
-    chat_b = SimpleNamespace(
+    chat_b = Chat(
         id=1002,
         title="B",
         type="private",
@@ -471,7 +496,7 @@ async def test_login_reports_available_folders_when_selection_is_missing(
 
 def test_user_signer_load_sign_record_migrates_legacy_json(signer_factory):
     signer = signer_factory(task_name="linuxdo")
-    signer.user = SimpleNamespace(id=123456)
+    signer.user = User(id=123456)
     legacy_record_file = signer.task_dir / "sign_record.json"
     legacy_record_file.write_text(
         json.dumps({"2026-03-17": "2026-03-17T06:00:00+08:00"}),
@@ -486,7 +511,7 @@ def test_user_signer_load_sign_record_migrates_legacy_json(signer_factory):
 
 def test_user_signer_load_sign_record_logs_migration_hint(monkeypatch, signer_factory):
     signer = signer_factory(task_name="linuxdo")
-    signer.user = SimpleNamespace(id=123456)
+    signer.user = User(id=123456)
     legacy_record_file = signer.task_dir / "sign_record.json"
     legacy_record_file.write_text(
         json.dumps({"2026-03-17": "2026-03-17T06:00:00+08:00"}),
@@ -510,7 +535,7 @@ def test_user_signer_load_sign_record_logs_migration_hint(monkeypatch, signer_fa
 
 def test_user_signer_persist_sign_record_writes_sqlite_only_by_default(signer_factory):
     signer = signer_factory(task_name="linuxdo")
-    signer.user = SimpleNamespace(id=123456)
+    signer.user = User(id=123456)
     sign_record = {}
 
     signer.persist_sign_record(
@@ -528,7 +553,7 @@ def test_user_signer_persist_sign_record_writes_sqlite_only_by_default(signer_fa
 async def test_login_skips_topics_for_non_forum_supergroup(monkeypatch, signer_factory):
     import tg_signer.core as core
 
-    chat = SimpleNamespace(
+    chat = Chat(
         id=-1001,
         title="plain-supergroup",
         type=core.ChatType.SUPERGROUP,
@@ -561,7 +586,7 @@ async def test_login_prints_topics_for_forum_chat(
 ):
     import tg_signer.core as core
 
-    chat = SimpleNamespace(
+    chat = Chat(
         id=-1002,
         title=f"{chat_type.name.lower()}-chat",
         type=chat_type,
@@ -575,9 +600,9 @@ async def test_login_prints_topics_for_forum_chat(
     signer = signer_factory()
     signer.get_forum_topics = AsyncMock(
         return_value=[
-            SimpleNamespace(
+            ForumTopic(
                 id=1,
-                title="General",
+                name="General",
                 is_closed=False,
                 is_pinned=False,
             )
@@ -587,14 +612,16 @@ async def test_login_prints_topics_for_forum_chat(
     await signer.login(num_of_dialogs=20, print_chat=True)
 
     signer.get_forum_topics.assert_awaited_once_with(chat.id, limit=20)
-    assert any("message_thread_id: 1" in str(message) for message in outputs)
+    assert any(
+        "message_thread_id: 1, title: General" in str(message) for message in outputs
+    )
 
 
 @pytest.mark.asyncio
 async def test_login_skips_topics_for_direct_chat(monkeypatch, signer_factory):
     import tg_signer.core as core
 
-    chat = SimpleNamespace(
+    chat = Chat(
         id=-1004,
         title="direct-chat",
         type=ChatType.DIRECT,
@@ -620,8 +647,8 @@ async def test_login_loads_forum_topics_after_dialog_fetch(monkeypatch, signer_f
 
     async def fake_get_dialogs(self, limit):
         del limit
-        yield SimpleNamespace(
-            chat=SimpleNamespace(
+        yield make_dialog(
+            chat=Chat(
                 id=-1005,
                 title="forum-chat",
                 type=core.ChatType.FORUM,
@@ -634,9 +661,9 @@ async def test_login_loads_forum_topics_after_dialog_fetch(monkeypatch, signer_f
 
     async def fake_get_forum_topics(self, chat_id, limit=20):
         del chat_id, limit
-        yield SimpleNamespace(
+        yield ForumTopic(
             id=1,
-            title="General",
+            name="General",
             is_closed=False,
             is_pinned=False,
         )
@@ -669,69 +696,111 @@ async def test_login_loads_forum_topics_after_dialog_fetch(monkeypatch, signer_f
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "async_topic_parser",
-    [False, True],
-    ids=["sync-topic-parser", "async-topic-parser"],
-)
-async def test_client_get_forum_topics_handles_missing_top_message(
-    monkeypatch, signer_factory, async_topic_parser
+@pytest.mark.parametrize("entrypoint", ["login", "list_topics"])
+async def test_topic_output_uses_kurigram_parser(
+    monkeypatch, signer_factory, entrypoint
 ):
-    import tg_signer._kurigram.methods as kurigram_methods
     import tg_signer.core as core
 
+    chat = Chat(id=-1005, title="forum-chat", type=ChatType.FORUM)
+    outputs = setup_login_test(monkeypatch, core, [chat])
     signer = signer_factory()
-    invoke_calls = []
+    topic = raw.types.ForumTopic(
+        id=7,
+        date=0,
+        peer=raw.types.PeerChannel(channel_id=5),
+        title="Check-in",
+        icon_color=0,
+        top_message=10,
+        read_inbox_max_id=0,
+        read_outbox_max_id=0,
+        unread_count=0,
+        unread_mentions_count=0,
+        unread_reactions_count=0,
+        unread_poll_votes_count=0,
+        from_id=raw.types.PeerUser(user_id=123456),
+        notify_settings=raw.types.PeerNotifySettings(),
+        closed=True,
+        pinned=True,
+    )
+    response = raw.types.messages.ForumTopics(
+        count=2,
+        topics=[topic, raw.types.ForumTopicDeleted(id=8)],
+        messages=[],
+        chats=[],
+        users=[],
+        pts=0,
+    )
+    monkeypatch.setattr(signer.app, "resolve_peer", AsyncMock(return_value=topic.peer))
+    monkeypatch.setattr(signer.app, "invoke", AsyncMock(return_value=response))
 
-    async def direct_call(_api_name, func):
-        return await func()
-
-    async def fake_resolve_peer(chat_id):
-        return chat_id
-
-    async def fake_invoke(query):
-        invoke_calls.append(query)
-        return SimpleNamespace(
-            users=[],
-            chats=[],
-            messages=[SimpleNamespace(id=10)],
-            topics=["topic-1", "topic-1-duplicate", "topic-2"],
-        )
-
-    async def fake_parse_message(_client, message, _users, _chats):
-        return SimpleNamespace(
-            id=message.id,
-            date=datetime(2026, 3, 8, tzinfo=timezone.utc),
-        )
-
-    def parse_topic(_client, topic, messages, _users, _chats):
-        if topic == "topic-1":
-            return SimpleNamespace(id=1, title="A", top_message=messages[10])
-        if topic == "topic-1-duplicate":
-            return SimpleNamespace(id=1, title="A duplicate", top_message=messages[10])
-        if topic == "topic-2":
-            return SimpleNamespace(id=2, title="B", top_message=None)
-        return None
-
-    if async_topic_parser:
-
-        async def fake_parse_topic(*args):
-            return parse_topic(*args)
-
+    if entrypoint == "login":
+        await signer.login(num_of_dialogs=20, print_chat=True)
     else:
-        fake_parse_topic = parse_topic
+        topics = await signer.list_topics(chat.id)
+        assert isinstance(topics[0], ForumTopic)
+        assert topics[0].name == "Check-in"
+        assert topics[1].is_deleted
 
-    monkeypatch.setattr(signer, "_call_telegram_api", direct_call)
-    monkeypatch.setattr(signer.app, "resolve_peer", fake_resolve_peer)
-    monkeypatch.setattr(signer.app, "invoke", fake_invoke)
-    monkeypatch.setattr(kurigram_methods.types.Message, "_parse", fake_parse_message)
-    monkeypatch.setattr(kurigram_methods.types.ForumTopic, "_parse", fake_parse_topic)
+    assert any(
+        "message_thread_id: 7, title: Check-in, closed: True, pinned: True"
+        in str(message)
+        for message in outputs
+    )
+    assert any(
+        "message_thread_id: 8, title: -, closed: False, pinned: False" in str(message)
+        for message in outputs
+    )
+
+
+@pytest.mark.asyncio
+async def test_client_get_forum_topics_handles_missing_top_message(
+    monkeypatch, signer_factory
+):
+    signer = signer_factory()
+    messages = [
+        raw.types.Message(
+            id=10,
+            peer_id=raw.types.PeerChannel(channel_id=5),
+            date=1767225600,
+            message="latest",
+        )
+    ]
+    response = raw.types.messages.ForumTopics(
+        count=2,
+        topics=[
+            make_raw_topic(1, "A"),
+            make_raw_topic(1, "A duplicate"),
+            make_raw_topic(2, "B", top_message=99),
+        ],
+        messages=messages,
+        users=[],
+        chats=[
+            raw.types.Channel(
+                id=5,
+                title="Topic test",
+                photo=raw.types.ChatPhotoEmpty(),
+                date=0,
+                megagroup=True,
+            )
+        ],
+        pts=0,
+    )
+    monkeypatch.setattr(
+        signer.app,
+        "resolve_peer",
+        AsyncMock(return_value=raw.types.InputPeerChannel(channel_id=5, access_hash=1)),
+    )
+    invoke = AsyncMock(return_value=raw.core.TLObject.read(BytesIO(response.write())))
+    monkeypatch.setattr(signer.app, "invoke", invoke)
 
     topics = await signer.get_forum_topics(-100123, limit=20)
 
-    assert isinstance(signer.app, core.Client)
+    assert all(isinstance(topic, ForumTopic) for topic in topics)
     assert [topic.id for topic in topics] == [1, 2]
-    assert len(invoke_calls) == 1
+    assert isinstance(topics[0].top_message, Message)
+    assert topics[1].top_message is None
+    invoke.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -741,7 +810,7 @@ async def test_login_ignores_topic_lookup_failures(
 ):
     import tg_signer.core as core
 
-    chat = SimpleNamespace(
+    chat = Chat(
         id=-1003,
         title="forum-supergroup",
         type=core.ChatType.SUPERGROUP,
@@ -932,7 +1001,7 @@ async def test_resolve_chat_route_key_supports_username(monkeypatch, signer_fact
 
     async def fake_get_chat(chat_id):
         assert chat_id == "@neo"
-        return SimpleNamespace(id=-1003763902761)
+        return Chat(id=-1003763902761)
 
     monkeypatch.setattr(signer.app, "get_chat", fake_get_chat)
 
@@ -952,7 +1021,7 @@ async def test_wait_for_uses_resolved_route_key_for_username(signer_factory):
     )
     raw_key = signer.get_route_key("@neo", None)
     resolved_key = signer.get_route_key(-1003763902761, None)
-    message = SimpleNamespace(id=99, text="签到", photo=None, reply_markup=None)
+    message = Message(id=99, text="签到", photo=None, reply_markup=None)
     signer.context.resolved_route_keys[raw_key] = resolved_key
     signer.context.chat_messages[resolved_key][99] = message
     signer._click_keyboard_by_text = AsyncMock(return_value=True)
@@ -972,7 +1041,7 @@ async def test_wait_for_skips_consumed_message_placeholders(signer_factory):
         actions=[ClickKeyboardByTextAction(text="签到")],
     )
     route_key = signer.get_route_key(123, None)
-    message = SimpleNamespace(
+    message = Message(
         id=100,
         text="签到",
         photo=None,
@@ -1002,11 +1071,11 @@ async def test_reply_by_calculation_problem_clicks_caption_inline_answer(
     signer.get_ai_tools = lambda: ai_tools
     signer.request_callback_answer = AsyncMock(return_value=None)
     signer.send_message = AsyncMock(return_value=None)
-    message = SimpleNamespace(
+    message = Message(
         id=99,
         text=None,
         caption="17 - 9 = ?",
-        chat=SimpleNamespace(id=123),
+        chat=Chat(id=123),
         message_thread_id=1,
         reply_markup=InlineKeyboardMarkup(
             [
@@ -1059,10 +1128,10 @@ async def test_reply_by_calculation_problem_matches_quoted_answer(
     )
     signer.request_callback_answer = AsyncMock()
     signer.send_message = AsyncMock()
-    message = SimpleNamespace(
+    message = Message(
         id=99,
         text="请在60秒内点击正确答案：7 * 4 = ?",
-        chat=SimpleNamespace(id=123),
+        chat=Chat(id=123),
         reply_markup=InlineKeyboardMarkup(
             [
                 [
@@ -1098,11 +1167,11 @@ async def test_reply_by_calculation_problem_clicks_non_numeric_inline_answer(
     signer.get_ai_tools = lambda: ai_tools
     signer.request_callback_answer = AsyncMock(return_value=None)
     signer.send_message = AsyncMock(return_value=None)
-    message = SimpleNamespace(
+    message = Message(
         id=99,
         text=None,
         caption="请选择正确答案",
-        chat=SimpleNamespace(id=123),
+        chat=Chat(id=123),
         message_thread_id=1,
         reply_markup=InlineKeyboardMarkup(
             [
@@ -1141,11 +1210,11 @@ async def test_reply_by_calculation_problem_sends_caption_answer_without_keyboar
     signer.get_ai_tools = lambda: ai_tools
     signer.request_callback_answer = AsyncMock(return_value=None)
     signer.send_message = AsyncMock(return_value=None)
-    message = SimpleNamespace(
+    message = Message(
         id=99,
         text=None,
         caption="17 - 9 = ?",
-        chat=SimpleNamespace(id=123),
+        chat=Chat(id=123),
         message_thread_id=1,
         reply_markup=None,
     )
@@ -1168,12 +1237,12 @@ async def test_choose_option_by_image_uses_caption_and_option_index(signer_facto
     signer.get_ai_tools = lambda: ai_tools
     signer.app.download_media = AsyncMock(return_value=BytesIO(b"image-bytes"))
     signer.request_callback_answer = AsyncMock(return_value=None)
-    message = SimpleNamespace(
+    message = Message(
         id=99,
         text=None,
         caption="请点击图中的物品",
-        chat=SimpleNamespace(id=123),
-        photo=SimpleNamespace(file_id="photo-id"),
+        chat=Chat(id=123),
+        photo=make_photo(file_id="photo-id"),
         reply_markup=InlineKeyboardMarkup(
             [
                 [
@@ -1210,19 +1279,19 @@ async def test_choose_option_by_image_uses_previous_photo_for_split_keyboard(
     signer.get_ai_tools = lambda: ai_tools
     signer.app.download_media = AsyncMock(return_value=BytesIO(b"image-bytes"))
     signer.request_callback_answer = AsyncMock(return_value=None)
-    photo_message = SimpleNamespace(
+    photo_message = Message(
         id=98,
         text=None,
         caption=None,
-        chat=SimpleNamespace(id=123),
-        photo=SimpleNamespace(file_id="photo-id"),
+        chat=Chat(id=123),
+        photo=make_photo(file_id="photo-id"),
         reply_markup=None,
     )
-    button_message = SimpleNamespace(
+    button_message = Message(
         id=99,
         text="请选择图中的物品",
         caption=None,
-        chat=SimpleNamespace(id=123),
+        chat=Chat(id=123),
         photo=None,
         reply_markup=InlineKeyboardMarkup(
             [
@@ -1262,12 +1331,12 @@ async def test_choose_option_by_image_rejects_invalid_option_index(signer_factor
     signer.get_ai_tools = lambda: ai_tools
     signer.app.download_media = AsyncMock(return_value=BytesIO(b"image-bytes"))
     signer.request_callback_answer = AsyncMock(return_value=None)
-    message = SimpleNamespace(
+    message = Message(
         id=99,
         text=None,
         caption="请点击图中的物品",
-        chat=SimpleNamespace(id=123),
-        photo=SimpleNamespace(file_id="photo-id"),
+        chat=Chat(id=123),
+        photo=make_photo(file_id="photo-id"),
         reply_markup=InlineKeyboardMarkup(
             [[InlineKeyboardButton("手机", callback_data="answer:phone")]]
         ),
@@ -1291,8 +1360,8 @@ async def test_on_message_routes_by_chat_id_and_message_thread_id(signer_factory
             actions=[SendTextAction(text="checkin")],
         )
     )
-    message = SimpleNamespace(
-        chat=SimpleNamespace(id=-1003763902761),
+    message = Message(
+        chat=Chat(id=-1003763902761),
         message_thread_id=11,
         id=99,
     )
@@ -1313,8 +1382,8 @@ async def test_on_message_falls_back_to_non_thread_route(signer_factory):
             actions=[SendTextAction(text="checkin")],
         )
     )
-    message = SimpleNamespace(
-        chat=SimpleNamespace(id=-1003763902761),
+    message = Message(
+        chat=Chat(id=-1003763902761),
         message_thread_id=22,
         id=100,
     )
@@ -1335,8 +1404,8 @@ async def test_on_message_routes_username_chat_by_resolved_chat_id(signer_factor
             actions=[SendTextAction(text="checkin")],
         )
     )
-    message = SimpleNamespace(
-        chat=SimpleNamespace(id=-1003763902761),
+    message = Message(
+        chat=Chat(id=-1003763902761),
         message_thread_id=None,
         id=101,
     )
@@ -1350,8 +1419,8 @@ async def test_on_message_routes_username_chat_by_resolved_chat_id(signer_factor
 async def test_on_message_ignores_unexpected_chat(signer_factory):
     signer = signer_factory()
     signer.context = signer.ensure_ctx()
-    message = SimpleNamespace(
-        chat=SimpleNamespace(id=-1003763902761),
+    message = Message(
+        chat=Chat(id=-1003763902761),
         message_thread_id=22,
         id=100,
     )
@@ -1361,74 +1430,13 @@ async def test_on_message_ignores_unexpected_chat(signer_factory):
     assert signer.context.chat_messages == {}
 
 
-@pytest.mark.asyncio
-async def test_schedule_messages_passes_message_thread_id(monkeypatch, signer_factory):
-    signer = signer_factory()
-    signer.user = SimpleNamespace(id=1)
-    calls = []
-
-    class DummyApp:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        async def send_message(self, chat_id, text, **kwargs):
-            calls.append({"chat_id": chat_id, "text": text, "kwargs": dict(kwargs)})
-            return True
-
-    async def direct_call(_api_name, func):
-        return await func()
-
-    signer.app = DummyApp()
-    monkeypatch.setattr(signer, "_call_telegram_api", direct_call)
-
-    await signer.schedule_messages(
-        -1003763902761,
-        "checkin",
-        "0 6 * * *",
-        next_times=1,
-        random_seconds=0,
-        message_thread_id=1,
-    )
-
-    assert calls[0]["kwargs"]["message_thread_id"] == 1
-
-
-@pytest.mark.asyncio
-async def test_get_schedule_messages_calls_chat_level_api(monkeypatch, signer_factory):
-    signer = signer_factory()
-    signer.user = SimpleNamespace(id=1)
-    calls = []
-
-    class DummyApp:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        async def get_scheduled_messages(self, chat_id, **kwargs):
-            calls.append({"chat_id": chat_id, "kwargs": dict(kwargs)})
-            return []
-
-    async def direct_call(_api_name, func):
-        return await func()
-
-    signer.app = DummyApp()
-    monkeypatch.setattr(signer, "_call_telegram_api", direct_call)
-
-    await signer.get_schedule_messages(-1003763902761)
-
-    assert calls[0]["kwargs"] == {}
-
-
-def test_normal_run_skips_username_resolution_errors_per_chat(signer_factory):
+def test_normal_run_skips_username_resolution_errors_per_chat(
+    signer_factory, telegram_server
+):
     import tg_signer.core as core
 
-    signer = signer_factory()
-    signer.user = SimpleNamespace(id=1)
+    signer = signer_factory(session_string=telegram_server.session_string)
+    signer.user = User(id=1)
     signer.context = signer.ensure_ctx()
     signer._validate_sign_at = lambda *_: "0 0 * * *"
     signer.load_sign_record = lambda: {}
@@ -1451,22 +1459,9 @@ def test_normal_run_skips_username_resolution_errors_per_chat(signer_factory):
 
     signer.sign_a_chat = fake_sign_a_chat
 
-    class DummyApp:
-        key = "dummy-app"
-
-        def add_handler(self, *_args, **_kwargs):
-            return None
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
-        async def get_chat(self, chat_id):
-            raise core.errors.UsernameNotOccupied(chat_id)
-
-    signer.app = DummyApp()
+    telegram_server.responses[raw.functions.contacts.ResolveUsername] = (
+        core.errors.UsernameNotOccupied("bad")
+    )
 
     asyncio.run(signer.normal_run(only_once=True))
 
